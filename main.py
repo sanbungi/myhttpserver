@@ -2,46 +2,54 @@ import os
 import socket
 from pprint import pprint
 from pathlib import Path
-from utils import HTTPRequest, parse_request, get_http_reason_phrase
+from utils import HTTPRequest, parse_request, get_http_reason_phrase, get_content_type
 
 
 def make_response(filepath: str = "."):
     path = Path(filepath)
     print(f"path is :{path}")
 
-    # pathがrootならindexを返す
-    if path == Path("/"):
-        with open(f"html/index.html", "r", encoding="utf-8") as f:
-            content = f.read()
-            print("index.html")
-            return content, len(content), "text/html; charset=utf-8", 200
+    try:
+        # pathがrootならindexを返す
+        if path == Path("/"):
+            with open(f"html/index.html", "r", encoding="utf-8") as f:
+                content = f.read()
+                print("index.html")
+                return content, len(content), "text/html; charset=utf-8", 200
 
-    tmp = "html" + filepath
-    server_file_path = Path(tmp)
-    if not os.path.exists(server_file_path):
-        print("404 file not found!")
-        return "404 Not Found", len("404 Not Found"), "text/plain; charset=utf-8", 404
+        server_file_path = Path("html") / path.relative_to("/")
 
-    ext = server_file_path.suffix.lower()
-    if ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]:
-        content_type = f"image/{ext[1:]}"  # .jpg -> image/jpg など
-        is_binary = True
-    elif ext in [".html", ".txt"]:
-        content_type = "text/html; charset=utf-8"
-        is_binary = False
-    else:
-        content_type = "application/octet-stream"  # デフォルトでバイナリ扱い
-        is_binary = True
+        if not os.path.exists(server_file_path):
+            print("404 file not found!")
+            return (
+                "404 Not Found",
+                len("404 Not Found"),
+                "text/plain; charset=utf-8",
+                404,
+            )
 
-    if is_binary:
-        with open(server_file_path, "rb") as f:  # バイナリモード
-            content = f.read()
-    else:
-        with open(server_file_path, "r", encoding="utf-8") as f:  # テキストモード
-            content = f.read()
+        content_type, is_binary = get_content_type(server_file_path)
 
-    print(f"serving {ext} file")
-    return content, len(content), content_type, 200
+        if is_binary:
+            with open(server_file_path, "rb") as f:
+                content = f.read()
+        else:
+            with open(server_file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+        return content, len(content), content_type, 200
+
+    except PermissionError:
+        print("403 Forbidden!")
+        return "403 Forbidden", len("403 Forbidden"), "text/plain; charset=utf-8", 403
+    except Exception as e:
+        print(f"500 Internal Server Error! {e}")
+        return (
+            "500 Internal Server Error",
+            len("500 Internal Server Error"),
+            "text/plain; charset=utf-8",
+            500,
+        )
 
 
 def server():
@@ -69,11 +77,6 @@ def server():
                     print("----- request -----")
                     pprint(request)
                     print("-------------------")
-
-                    # referer = []
-                    # if "Referer" in request.headers:
-                    #   referer = request.headers["Referer"].split("/")[3:]
-                    #  print(referer)
 
                     content, length, content_type, status_code = make_response(
                         request.path

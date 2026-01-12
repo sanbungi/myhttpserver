@@ -66,3 +66,21 @@ def get_http_reason_phrase(status_code):
     
     # 辞書にない場合は "Unknown" を返す
     return status_map.get(status_code, "Unknown Status Code")
+
+
+# ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
+def get_content_type(file_path: str) -> tuple[str, bool]:
+    from pathlib import Path
+
+    ext = Path(file_path).suffix.lower()
+    if ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]:
+        content_type = f"image/{ext[1:]}"
+        is_binary = True
+    elif ext in [".html", ".txt"]:
+        content_type = "text/html; charset=utf-8"
+        is_binary = False
+    else:
+        content_type = "unknown/unknown"
+        is_binary = True
+
+    return content_type, is_binary
