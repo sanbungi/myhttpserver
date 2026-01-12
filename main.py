@@ -1,5 +1,7 @@
 import os
 import socket
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from pprint import pprint
 from pathlib import Path
 from utils import HTTPRequest, parse_request, get_http_reason_phrase, get_content_type
@@ -52,6 +54,44 @@ def make_response(filepath: str = "."):
         )
 
 
+def handle_client(client_sock, addr):
+    try:
+        with client_sock:
+            print(f"Connect by {addr} Thead: {threading.current_thread().name}")
+
+            raw_request = client_sock.recv(1024).decode("utf-8")
+            if not raw_request:
+                return
+
+            request = parse_request(raw_request)
+            print("----- request -----")
+            pprint(request)
+            print("-------------------")
+
+            content, length, content_type, status_code = make_response(request.path)
+
+            response = (
+                f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}\r\n"
+                f"Content-Type: {content_type}\r\n"
+                f"Content-Length: {length}\r\n"
+                "\r\n"
+            )
+
+            if isinstance(content, str):
+                response += content
+
+            if isinstance(content, bytes):
+                header = response.encode("utf-8")
+                client_sock.sendall(header + content)
+            else:
+                client_sock.sendall(response.encode("utf-8"))
+
+            client_sock.close()
+
+    except Exception as e:
+        print(f"Error handling client {addr}: {e}")
+
+
 def server():
     # ipv4, tcp
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
@@ -59,53 +99,21 @@ def server():
         server_sock.bind(("", 8000))
 
         # 接続待ち
-        server_sock.listen(1)
+        server_sock.listen(5)
 
         print("start server at port 8000")
 
-        try:
-            while True:
-                client_sock, addr = server_sock.accept()
-                with client_sock:
-                    print(f"Connect by {addr}")
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            try:
+                while True:
+                    client_sock, addr = server_sock.accept()
 
-                    raw_request = client_sock.recv(1024).decode("utf-8")
-                    if not raw_request:
-                        continue
+                    executor.submit(handle_client, client_sock, addr)
 
-                    request = parse_request(raw_request)
-                    print("----- request -----")
-                    pprint(request)
-                    print("-------------------")
-
-                    content, length, content_type, status_code = make_response(
-                        request.path
-                    )
-
-                    response = (
-                        f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}\r\n"
-                        f"Content-Type: {content_type}\r\n"
-                        f"Content-Length: {length}\r\n"
-                        "\r\n"
-                    )
-
-                    if isinstance(content, str):
-                        response += content
-                    else:
-                        pass
-
-                    if isinstance(content, bytes):
-                        header = response.encode("utf-8")
-                        client_sock.sendall(header + content)
-                    else:
-                        client_sock.sendall(response.encode("utf-8"))
-
-                    client_sock.close()
-
-        except KeyboardInterrupt:
-            print("stop server")
-        finally:
-            server_sock.close()
+            except KeyboardInterrupt:
+                print("stop server")
+            finally:
+                server_sock.close()
 
 
 if __name__ == "__main__":
