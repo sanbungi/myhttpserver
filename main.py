@@ -27,6 +27,10 @@ def make_response(filepath: str = "."):
 
         server_file_path = Path("html") / path.relative_to("/")
 
+        # ディレクトリならその中のindex.htmlを返す
+        if server_file_path.is_dir():
+            server_file_path = server_file_path / "index.html"
+
         if not os.path.exists(server_file_path):
             print("404 file not found!")
             return (
