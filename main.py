@@ -7,30 +7,41 @@ from utils import HTTPRequest, parse_request
 
 def make_response(filepath: str = "."):
     path = Path(filepath)
-    print(f'path is :{path}')
+    print(f"path is :{path}")
 
     # pathがrootならindexを返す
     if path == Path("/"):
         with open(f"html/index.html", "r", encoding="utf-8") as f:
             content = f.read()
             print("index.html")
-            return content, len(content)
-    
-    tmp = 'html' + filepath
+            return content, len(content), "text/html; charset=utf-8", 200
+
+    tmp = "html" + filepath
     server_file_path = Path(tmp)
     if not os.path.exists(server_file_path):
         print("404 file not found!")
-        return "",0 
-    
-    # pathが動的で、それがファイルなら読み込んで返す。
-    if os.path.isfile(server_file_path):
-        with open(f"{server_file_path}", "r", encoding="utf-8") as f:
+        return "404 Not Found", len("404 Not Found"), "text/plain; charset=utf-8", 404
+
+    ext = server_file_path.suffix.lower()
+    if ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]:
+        content_type = f"image/{ext[1:]}"  # .jpg -> image/jpg など
+        is_binary = True
+    elif ext in [".html", ".txt"]:
+        content_type = "text/html; charset=utf-8"
+        is_binary = False
+    else:
+        content_type = "application/octet-stream"  # デフォルトでバイナリ扱い
+        is_binary = True
+
+    if is_binary:
+        with open(server_file_path, "rb") as f:  # バイナリモード
             content = f.read()
-            print("dynamic")
-            return content, len(content)
- 
-    print("return 0")
-    return "",0
+    else:
+        with open(server_file_path, "r", encoding="utf-8") as f:  # テキストモード
+            content = f.read()
+
+    print(f"serving {ext} file")
+    return content, len(content), content_type, 200
 
 
 def server():
@@ -59,25 +70,33 @@ def server():
                     pprint(request)
                     print("-------------------")
 
-                   # referer = []
-                    #if "Referer" in request.headers:
-                     #   referer = request.headers["Referer"].split("/")[3:]
-                      #  print(referer)
+                    # referer = []
+                    # if "Referer" in request.headers:
+                    #   referer = request.headers["Referer"].split("/")[3:]
+                    #  print(referer)
 
-                    content, length = make_response(request.path)
-
-                    response = (
-                        "HTTP/1.1 200 OK\r\n"
-                        "Content-Type: text/html; charset=utf-8\r\n"
-                        f"Content-Length: {length}\r\n"
-                        "\r\n"
-                        f"{content}"
+                    content, length, content_type, status_code = make_response(
+                        request.path
                     )
 
-                    #print("real res")
-                    #pprint(response)
+                    response = (
+                        f"HTTP/1.1 {status_code} OK\r\n"
+                        f"Content-Type: {content_type}\r\n"
+                        f"Content-Length: {length}\r\n"
+                        "\r\n"
+                    )
 
-                    client_sock.sendall(response.encode("utf-8"))
+                    if isinstance(content, str):
+                        response += content
+                    else:
+                        pass
+
+                    if isinstance(content, bytes):
+                        header = response.encode("utf-8")
+                        client_sock.sendall(header + content)
+                    else:
+                        client_sock.sendall(response.encode("utf-8"))
+
                     client_sock.close()
 
         except KeyboardInterrupt:
