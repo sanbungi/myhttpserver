@@ -7,7 +7,8 @@ class HTTPRequest:
         self.body = body
 
     def __repr__(self):
-        return f"<HTTPRequest {self.method} {self.path}>"
+        headers_str = "\n".join(f"    {k}: {v}" for k, v in self.headers.items())
+        return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n)"
 
 
 def parse_request(request_text: str) -> HTTPRequest:

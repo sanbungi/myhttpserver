@@ -21,6 +21,7 @@ def make_response(filepath: str = "."):
     if not os.path.exists(server_file_path):
         print("404 file not found!")
         return "",0 
+    
     # pathが動的で、それがファイルなら読み込んで返す。
     if os.path.isfile(server_file_path):
         with open(f"{server_file_path}", "r", encoding="utf-8") as f:
@@ -54,8 +55,9 @@ def server():
                         continue
 
                     request = parse_request(raw_request)
-                    print(type(request))
-                    pprint(request.path)
+                    print("----- request -----")
+                    pprint(request)
+                    print("-------------------")
 
                    # referer = []
                     #if "Referer" in request.headers:
