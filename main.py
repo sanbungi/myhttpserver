@@ -47,7 +47,9 @@ def make_response(filepath: str = "."):
                 content = f.read()
         else:
             with open(server_file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+                text_content = f.read()
+                # 日本語等だとカウントがずれるので先にエンコード
+                content = text_content.encode("utf-8")
 
         return content, len(content), content_type, 200
 
@@ -83,7 +85,6 @@ def handle_client(client_sock, addr):
 
                 content, length, content_type, status_code = make_response(request.path)
 
-                connection_header = request.headers.get("Connection", "").lower()
                 use_keep_alive = get_keep_alive(request)
 
                 print(f"Use keep-alive: {use_keep_alive}")
