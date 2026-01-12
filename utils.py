@@ -34,6 +34,7 @@ def parse_request(request_text: str) -> HTTPRequest:
 
     return HTTPRequest(method, path, version, headers, body)
 
+
 # HTTPステータスコードから理由フレーズを返す
 def get_http_reason_phrase(status_code):
     status_map = {
@@ -63,7 +64,7 @@ def get_http_reason_phrase(status_code):
         503: "Service Unavailable",
         504: "Gateway Timeout",
     }
-    
+
     # 辞書にない場合は "Unknown" を返す
     return status_map.get(status_code, "Unknown Status Code")
 
@@ -84,3 +85,16 @@ def get_content_type(file_path: str) -> tuple[str, bool]:
         is_binary = True
 
     return content_type, is_binary
+
+
+# Keep-Aliveを使うかをヘッダーとHTTPバージョンから判定
+def get_keep_alive(request: HTTPRequest) -> bool:
+    connection_header = request.headers.get("Connection", "").lower()
+
+    # http1.0なら明示的にkeep-alive指定がない限りclose
+    if request.version == "HTTP/1.0" and connection_header != "keep-alive":
+        return False
+    elif request.version == "HTTP/1.1" and connection_header == "close":
+        return False
+    else:
+        return True

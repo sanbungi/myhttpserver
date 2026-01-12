@@ -4,7 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from pprint import pprint
 from pathlib import Path
-from utils import HTTPRequest, parse_request, get_http_reason_phrase, get_content_type
+from utils import (
+    HTTPRequest,
+    parse_request,
+    get_http_reason_phrase,
+    get_content_type,
+    get_keep_alive,
+)
 
 
 def make_response(filepath: str = "."):
@@ -59,34 +65,55 @@ def handle_client(client_sock, addr):
         with client_sock:
             print(f"Connect by {addr} Thead: {threading.current_thread().name}")
 
-            raw_request = client_sock.recv(1024).decode("utf-8")
-            if not raw_request:
-                return
+            keep_alive_timeout = 5
 
-            request = parse_request(raw_request)
-            print("----- request -----")
-            pprint(request)
-            print("-------------------")
+            try:
+                raw_request = client_sock.recv(1024).decode("utf-8")
+                if not raw_request:
+                    return
 
-            content, length, content_type, status_code = make_response(request.path)
+                request = parse_request(raw_request)
+                print("----- request -----")
+                pprint(request)
+                print("-------------------")
 
-            response = (
-                f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}\r\n"
-                f"Content-Type: {content_type}\r\n"
-                f"Content-Length: {length}\r\n"
-                "\r\n"
-            )
+                content, length, content_type, status_code = make_response(request.path)
 
-            if isinstance(content, str):
-                response += content
+                connection_header = request.headers.get("Connection", "").lower()
+                use_keep_alive = get_keep_alive(request)
 
-            if isinstance(content, bytes):
-                header = response.encode("utf-8")
-                client_sock.sendall(header + content)
-            else:
-                client_sock.sendall(response.encode("utf-8"))
+                print(f"Use keep-alive: {use_keep_alive}")
 
-            client_sock.close()
+                # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
+                headers = [
+                    f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}",
+                    f"Content-Type: {content_type}",
+                    f"Content-Length: {length}",
+                ]
+
+                if use_keep_alive:
+                    headers.append("Connection: keep-alive")
+                    headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
+                else:
+                    headers.append("Connection: close")
+
+                # ヘッダーとコンテンツを送信、バイナリならそのまま送信
+                header_blob = "\r\n".join(headers) + "\r\n\r\n"
+                if isinstance(content, bytes):
+                    client_sock.sendall(header_blob.encode("utf-8") + content)
+                else:
+                    client_sock.sendall(
+                        header_blob.encode("utf-8") + content.encode("utf-8")
+                    )
+
+                if not use_keep_alive:
+                    print(f"Closing connection with {addr}")
+                    return
+
+            except socket.timeout:
+                print(f"Connection with {addr} timed out.")
+            except Exception as e:
+                print(f"Error keeping connection with {addr}: {e}")
 
     except Exception as e:
         print(f"Error handling client {addr}: {e}")
