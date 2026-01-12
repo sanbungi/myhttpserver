@@ -102,6 +102,9 @@ def handle_client(client_sock, addr):
                 else:
                     headers.append("Connection: close")
 
+                # サーバ名を追加
+                headers.append("Server: MyHTTPServer/0.1")
+
                 # ヘッダーとコンテンツを送信、バイナリならそのまま送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
                 if isinstance(content, bytes):
