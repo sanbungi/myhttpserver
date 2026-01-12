@@ -33,3 +33,36 @@ def parse_request(request_text: str) -> HTTPRequest:
     body = "\r\n".join(lines[i:])
 
     return HTTPRequest(method, path, version, headers, body)
+
+# HTTPステータスコードから理由フレーズを返す
+def get_http_reason_phrase(status_code):
+    status_map = {
+        # 1xx
+        100: "Continue",
+        101: "Switching Protocols",
+        # 2xx
+        200: "OK",
+        201: "Created",
+        202: "Accepted",
+        204: "No Content",
+        # 3xx
+        301: "Moved Permanently",
+        302: "Found",
+        304: "Not Modified",
+        307: "Temporary Redirect",
+        # 4xx
+        400: "Bad Request",
+        401: "Unauthorized",
+        403: "Forbidden",
+        404: "Not Found",
+        405: "Method Not Allowed",
+        429: "Too Many Requests",
+        # 5xx
+        500: "Internal Server Error",
+        502: "Bad Gateway",
+        503: "Service Unavailable",
+        504: "Gateway Timeout",
+    }
+    
+    # 辞書にない場合は "Unknown" を返す
+    return status_map.get(status_code, "Unknown Status Code")

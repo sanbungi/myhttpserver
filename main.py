@@ -2,7 +2,7 @@ import os
 import socket
 from pprint import pprint
 from pathlib import Path
-from utils import HTTPRequest, parse_request
+from utils import HTTPRequest, parse_request, get_http_reason_phrase
 
 
 def make_response(filepath: str = "."):
@@ -80,7 +80,7 @@ def server():
                     )
 
                     response = (
-                        f"HTTP/1.1 {status_code} OK\r\n"
+                        f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}\r\n"
                         f"Content-Type: {content_type}\r\n"
                         f"Content-Length: {length}\r\n"
                         "\r\n"
