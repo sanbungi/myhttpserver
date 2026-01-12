@@ -73,18 +73,25 @@ def get_http_reason_phrase(status_code):
 def get_content_type(file_path: str) -> tuple[str, bool]:
     from pathlib import Path
 
-    ext = Path(file_path).suffix.lower()
-    if ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]:
-        content_type = f"image/{ext[1:]}"
-        is_binary = True
-    elif ext in [".html", ".txt"]:
-        content_type = "text/html; charset=utf-8"
-        is_binary = False
-    else:
-        content_type = "unknown/unknown"
-        is_binary = True
+    # 拡張子と（MIMEタイプ, is_binary）の対応表
+    MIME_MAP = {
+        ".html": ("text/html; charset=utf-8", False),
+        ".htm":  ("text/html; charset=utf-8", False),
+        ".css":  ("text/css; charset=utf-8", False),
+        ".js":   ("application/javascript; charset=utf-8", False),
+        ".json": ("application/json; charset=utf-8", False),
+        ".txt":  ("text/plain; charset=utf-8", False),
+        ".png":  ("image/png", True),
+        ".jpg":  ("image/jpeg", True),
+        ".jpeg": ("image/jpeg", True),
+        ".gif":  ("image/gif", True),
+        ".svg":  ("image/svg+xml", False), # SVGはXMLなのでテキスト
+        ".pdf":  ("application/pdf", True),
+    }
 
-    return content_type, is_binary
+    ext = Path(file_path).suffix.lower()
+    # 辞書にない場合はデフォルト値を返す (getメソッドの活用)
+    return MIME_MAP.get(ext, ("application/octet-stream", True))
 
 
 # Keep-Aliveを使うかをヘッダーとHTTPバージョンから判定
