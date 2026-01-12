@@ -4,8 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from pprint import pprint
 from pathlib import Path
+
+
 from utils import (
     HTTPRequest,
+    HTTPResponse,
     parse_request,
     get_http_reason_phrase,
     get_content_type,
@@ -13,7 +16,7 @@ from utils import (
 )
 
 
-def make_response(filepath: str = "."):
+def make_response(filepath: str = ".") -> HTTPResponse:
     path = Path(filepath)
     print(f"path is :{path}")
 
@@ -23,22 +26,24 @@ def make_response(filepath: str = "."):
             with open(f"html/index.html", "r", encoding="utf-8") as f:
                 content = f.read()
                 print("index.html")
-                return content, len(content), "text/html; charset=utf-8", 200
+                return HTTPResponse(200, "text/html; charset=utf-8", content)
 
         server_file_path = Path("html") / path.relative_to("/")
 
         # ディレクトリならその中のindex.htmlを返す
         if server_file_path.is_dir():
             server_file_path = server_file_path / "index.html"
+            # 301リダイレクト
+            return HTTPResponse(
+                301,
+                "text/plain; charset=utf-8",
+                "301 Moved Permanently",
+                {"Location": str(path) + "/index.html"},
+            )
 
         if not os.path.exists(server_file_path):
             print("404 file not found!")
-            return (
-                "404 Not Found",
-                len("404 Not Found"),
-                "text/plain; charset=utf-8",
-                404,
-            )
+            return HTTPResponse(404, "text/plain; charset=utf-8", "404 Not Found")
 
         content_type, is_binary = get_content_type(server_file_path)
 
@@ -51,18 +56,15 @@ def make_response(filepath: str = "."):
                 # 日本語等だとカウントがずれるので先にエンコード
                 content = text_content.encode("utf-8")
 
-        return content, len(content), content_type, 200
+        return HTTPResponse(200, content_type, content)
 
     except PermissionError:
         print("403 Forbidden!")
-        return "403 Forbidden", len("403 Forbidden"), "text/plain; charset=utf-8", 403
+        return HTTPResponse(403, "text/plain; charset=utf-8", "403 Forbidden")
     except Exception as e:
         print(f"500 Internal Server Error! {e}")
-        return (
-            "500 Internal Server Error",
-            len("500 Internal Server Error"),
-            "text/plain; charset=utf-8",
-            500,
+        return HTTPResponse(
+            500, "text/plain; charset=utf-8", "500 Internal Server Error"
         )
 
 
@@ -83,7 +85,7 @@ def handle_client(client_sock, addr):
                 pprint(request)
                 print("-------------------")
 
-                content, length, content_type, status_code = make_response(request.path)
+                response = make_response(request.path)
 
                 use_keep_alive = get_keep_alive(request)
 
@@ -91,10 +93,13 @@ def handle_client(client_sock, addr):
 
                 # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
                 headers = [
-                    f"HTTP/1.1 {status_code} {get_http_reason_phrase(status_code)}",
-                    f"Content-Type: {content_type}",
-                    f"Content-Length: {length}",
+                    f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
+                    f"Content-Type: {response.content_type}",
+                    f"Content-Length: {response.content_length}",
                 ]
+
+                for key, value in response.headers.items():
+                    headers.append(f"{key}: {value}")
 
                 if use_keep_alive:
                     headers.append("Connection: keep-alive")
@@ -107,11 +112,11 @@ def handle_client(client_sock, addr):
 
                 # ヘッダーとコンテンツを送信、バイナリならそのまま送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
-                if isinstance(content, bytes):
-                    client_sock.sendall(header_blob.encode("utf-8") + content)
+                if isinstance(response.content, bytes):
+                    client_sock.sendall(header_blob.encode("utf-8") + response.content)
                 else:
                     client_sock.sendall(
-                        header_blob.encode("utf-8") + content.encode("utf-8")
+                        header_blob.encode("utf-8") + response.content.encode("utf-8")
                     )
 
                 if not use_keep_alive:

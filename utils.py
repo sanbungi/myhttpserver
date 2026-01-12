@@ -1,3 +1,7 @@
+from dataclasses import dataclass, field
+from typing import Union, Dict
+
+
 class HTTPRequest:
     def __init__(self, method, path, version, headers, body):
         self.method = method
@@ -9,6 +13,20 @@ class HTTPRequest:
     def __repr__(self):
         headers_str = "\n".join(f"    {k}: {v}" for k, v in self.headers.items())
         return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n)"
+
+
+@dataclass
+class HTTPResponse:
+    status_code: int
+    content_type: str
+    content: Union[str, bytes]
+    headers: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def content_length(self) -> int:
+        if isinstance(self.content, bytes):
+            return len(self.content)
+        return len(self.content.encode("utf-8"))
 
 
 def parse_request(request_text: str) -> HTTPRequest:
@@ -76,17 +94,17 @@ def get_content_type(file_path: str) -> tuple[str, bool]:
     # 拡張子と（MIMEタイプ, is_binary）の対応表
     MIME_MAP = {
         ".html": ("text/html; charset=utf-8", False),
-        ".htm":  ("text/html; charset=utf-8", False),
-        ".css":  ("text/css; charset=utf-8", False),
-        ".js":   ("application/javascript; charset=utf-8", False),
+        ".htm": ("text/html; charset=utf-8", False),
+        ".css": ("text/css; charset=utf-8", False),
+        ".js": ("application/javascript; charset=utf-8", False),
         ".json": ("application/json; charset=utf-8", False),
-        ".txt":  ("text/plain; charset=utf-8", False),
-        ".png":  ("image/png", True),
-        ".jpg":  ("image/jpeg", True),
+        ".txt": ("text/plain; charset=utf-8", False),
+        ".png": ("image/png", True),
+        ".jpg": ("image/jpeg", True),
         ".jpeg": ("image/jpeg", True),
-        ".gif":  ("image/gif", True),
-        ".svg":  ("image/svg+xml", False), # SVGはXMLなのでテキスト
-        ".pdf":  ("application/pdf", True),
+        ".gif": ("image/gif", True),
+        ".svg": ("image/svg+xml", False),  # SVGはXMLなのでテキスト
+        ".pdf": ("application/pdf", True),
     }
 
     ext = Path(file_path).suffix.lower()
