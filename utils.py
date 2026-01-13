@@ -123,3 +123,44 @@ def get_keep_alive(request: HTTPRequest) -> bool:
         return False
     else:
         return True
+
+
+def response_301(location: str) -> HTTPResponse:
+    return HTTPResponse(
+        301,
+        "text/plain; charset=utf-8",
+        "301 Moved Permanently",
+        {"Location": location},
+    )
+
+
+def response_200(content: bytes, content_type: str) -> HTTPResponse:
+    return HTTPResponse(
+        200,
+        content_type,
+        content,
+    )
+
+
+def response_404() -> HTTPResponse:
+    return HTTPResponse(
+        404,
+        "text/plain; charset=utf-8",
+        "404 Not Found",
+    )
+
+
+def response_500() -> HTTPResponse:
+    return HTTPResponse(
+        500,
+        "text/plain; charset=utf-8",
+        "500 Internal Server Error",
+    )
+
+
+def response_403() -> HTTPResponse:
+    return HTTPResponse(
+        403,
+        "text/plain; charset=utf-8",
+        "403 Forbidden",
+    )

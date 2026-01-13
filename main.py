@@ -14,37 +14,32 @@ from utils import (
     get_http_reason_phrase,
     get_content_type,
     get_keep_alive,
+    response_200,
+    response_301,
+    response_403,
+    response_404,
+    response_500,
 )
 
 
 def make_response(filepath: str = ".") -> HTTPResponse:
     path = Path(filepath)
-    print(f"path is :{path}")
 
     try:
         # pathがrootならindexを返す
         if path == Path("/"):
             with open(f"html/index.html", "r", encoding="utf-8") as f:
                 content = f.read()
-                print("index.html")
-                return HTTPResponse(200, "text/html; charset=utf-8", content)
+                return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
 
         server_file_path = Path("html") / path.relative_to("/")
 
         # ディレクトリならその中のindex.htmlを返す
         if server_file_path.is_dir():
-            server_file_path = server_file_path / "index.html"
-            # 301リダイレクト
-            return HTTPResponse(
-                301,
-                "text/plain; charset=utf-8",
-                "301 Moved Permanently",
-                {"Location": str(path) + "/index.html"},
-            )
+            return response_301(str(path) + "/index.html")
 
         if not os.path.exists(server_file_path):
-            print("404 file not found!")
-            return HTTPResponse(404, "text/plain; charset=utf-8", "404 Not Found")
+            return response_404()
 
         content_type, is_binary = get_content_type(server_file_path)
 
@@ -57,16 +52,12 @@ def make_response(filepath: str = ".") -> HTTPResponse:
                 # 日本語等だとカウントがずれるので先にエンコード
                 content = text_content.encode("utf-8")
 
-        return HTTPResponse(200, content_type, content)
+        return response_200(content, content_type)
 
     except PermissionError:
-        print("403 Forbidden!")
-        return HTTPResponse(403, "text/plain; charset=utf-8", "403 Forbidden")
+        return response_403()
     except Exception as e:
-        print(f"500 Internal Server Error! {e}")
-        return HTTPResponse(
-            500, "text/plain; charset=utf-8", "500 Internal Server Error"
-        )
+        return response_500()
 
 
 def handle_client(client_sock, addr):
@@ -77,6 +68,7 @@ def handle_client(client_sock, addr):
         while True:
             try:
                 raw_request = client_sock.recv(1024).decode("utf-8")
+
                 if not raw_request:
                     return
 
@@ -113,13 +105,10 @@ def handle_client(client_sock, addr):
                 # ヘッダーとコンテンツを送信、バイナリならそのまま送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
                 if isinstance(response.content, bytes):
-                    client_sock.sendall(
-                        header_blob.encode("utf-8") + response.content
-                    )
+                    client_sock.sendall(header_blob.encode("utf-8") + response.content)
                 else:
                     client_sock.sendall(
-                        header_blob.encode("utf-8")
-                        + response.content.encode("utf-8")
+                        header_blob.encode("utf-8") + response.content.encode("utf-8")
                     )
 
                 if not use_keep_alive:
@@ -141,7 +130,7 @@ def server():
     ALSO_HTTP = True
     HTTP_PORT = 8000
     HTTPS_PORT = 8443
-    
+
     context = None
     if USE_SSL:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -176,19 +165,27 @@ def server():
                             client_sock.close()
                             continue
 
-                    executor.submit(handle_client, client_sock, addr,)
+                    executor.submit(
+                        handle_client,
+                        client_sock,
+                        addr,
+                    )
 
     threads = []
-    
+
     if USE_SSL:
         # HTTPS Server
-        t_https = threading.Thread(target=run_server_loop, args=(HTTPS_PORT, context), daemon=True)
+        t_https = threading.Thread(
+            target=run_server_loop, args=(HTTPS_PORT, context), daemon=True
+        )
         t_https.start()
         threads.append(t_https)
 
     if ALSO_HTTP or not USE_SSL:
         # HTTP Server
-        t_http = threading.Thread(target=run_server_loop, args=(HTTP_PORT, None), daemon=True)
+        t_http = threading.Thread(
+            target=run_server_loop, args=(HTTP_PORT, None), daemon=True
+        )
         t_http.start()
         threads.append(t_http)
 
