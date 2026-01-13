@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from pprint import pprint
 from pathlib import Path
+import logging
+from logging.handlers import RotatingFileHandler
 
 
 from utils import (
@@ -20,6 +22,38 @@ from utils import (
     response_404,
     response_500,
 )
+
+# logsディレクトリを作成
+os.makedirs("logs", exist_ok=True)
+
+
+# システムログ設定
+system_logger = logging.getLogger("system")
+system_logger.setLevel(logging.INFO)
+system_handler = RotatingFileHandler(
+    "logs/system.log", maxBytes=10 * 1024 * 1024, backupCount=5
+)
+system_handler.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+)
+system_logger.addHandler(system_handler)
+system_console = logging.StreamHandler()
+system_console.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+)
+system_logger.addHandler(system_console)
+
+# HTTPアクセスログ設定
+http_logger = logging.getLogger("http")
+http_logger.setLevel(logging.INFO)
+http_handler = RotatingFileHandler(
+    "logs/access.log", maxBytes=10 * 1024 * 1024, backupCount=5
+)
+http_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+http_logger.addHandler(http_handler)
+http_console = logging.StreamHandler()
+http_console.setFormatter(logging.Formatter("%(asctime)s [HTTP] %(message)s"))
+http_logger.addHandler(http_console)
 
 
 def make_response(filepath: str = ".") -> HTTPResponse:
@@ -73,15 +107,15 @@ def handle_client(client_sock, addr):
                     return
 
                 request = parse_request(raw_request)
-                print("----- request -----")
-                pprint(request)
-                print("-------------------")
 
                 response = make_response(request.path)
 
                 use_keep_alive = get_keep_alive(request)
 
-                print(f"Use keep-alive: {use_keep_alive}")
+                # HTTPアクセスログ
+                http_logger.info(
+                    f"{addr[0]} - {request.method} {request.path} - {response.status_code}"
+                )
 
                 # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
                 headers = [
@@ -112,17 +146,17 @@ def handle_client(client_sock, addr):
                     )
 
                 if not use_keep_alive:
-                    print(f"Closing connection with {addr}")
+                    system_logger.debug(f"Closing connection with {addr}")
                     return
 
             except socket.timeout:
-                print(f"Connection with {addr} timed out.")
+                system_logger.debug(f"Connection with {addr} timed out.")
             except Exception as e:
-                print(f"Error keeping connection with {addr}: {e}")
+                system_logger.error(f"Error keeping connection with {addr}: {e}")
     except ssl.SSLError as e:
-        print(f"SSL error with client {addr}: {e}")
+        system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:
-        print(f"Error handling client {addr}: {e}")
+        system_logger.error(f"Error handling client {addr}: {e}")
 
 
 def server():
@@ -137,7 +171,7 @@ def server():
         try:
             context.load_cert_chain(certfile="server.crt", keyfile="server.key")
         except Exception as e:
-            print(f"Error loading SSL certificate: {e}")
+            system_logger.error(f"Error loading SSL certificate: {e}")
             return
 
     def run_server_loop(port, ssl_context=None):
@@ -149,7 +183,8 @@ def server():
             # 接続待ち
             server_sock.listen(5)
 
-            print(f"start server at port {port}")
+            protocol = "HTTPS" if ssl_context else "HTTP"
+            system_logger.info(f"Start {protocol} server at port {port}")
 
             with ThreadPoolExecutor(max_workers=10) as executor:
                 while True:
@@ -161,7 +196,9 @@ def server():
                                 client_sock, server_side=True
                             )
                         except ssl.SSLError as e:
-                            print(f"SSL handshake failed with {addr}: {e}")
+                            system_logger.error(
+                                f"SSL handshake failed with {addr}: {e}"
+                            )
                             client_sock.close()
                             continue
 
@@ -193,7 +230,7 @@ def server():
         for t in threads:
             t.join()
     except KeyboardInterrupt:
-        print("stop server")
+        system_logger.info("Stop server")
 
 
 if __name__ == "__main__":
