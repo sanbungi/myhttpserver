@@ -1,5 +1,6 @@
 import os
 import socket
+import ssl
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from pprint import pprint
@@ -68,71 +69,84 @@ def make_response(filepath: str = ".") -> HTTPResponse:
         )
 
 
-def handle_client(client_sock, addr):
+def handle_client(client_sock, addr, ssl_context):
     try:
-        with client_sock:
+        with ssl_context.wrap_socket(client_sock, server_side=True) as client_sock:
             print(f"Connect by {addr} Thead: {threading.current_thread().name}")
 
             keep_alive_timeout = 5
+            client_sock.settimeout(keep_alive_timeout)
 
-            try:
-                raw_request = client_sock.recv(1024).decode("utf-8")
-                if not raw_request:
-                    return
+            while True:
+                try:
+                    raw_request = client_sock.recv(1024).decode("utf-8")
+                    if not raw_request:
+                        return
 
-                request = parse_request(raw_request)
-                print("----- request -----")
-                pprint(request)
-                print("-------------------")
+                    request = parse_request(raw_request)
+                    print("----- request -----")
+                    pprint(request)
+                    print("-------------------")
 
-                response = make_response(request.path)
+                    response = make_response(request.path)
 
-                use_keep_alive = get_keep_alive(request)
+                    use_keep_alive = get_keep_alive(request)
 
-                print(f"Use keep-alive: {use_keep_alive}")
+                    print(f"Use keep-alive: {use_keep_alive}")
 
-                # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
-                headers = [
-                    f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
-                    f"Content-Type: {response.content_type}",
-                    f"Content-Length: {response.content_length}",
-                ]
+                    # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
+                    headers = [
+                        f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
+                        f"Content-Type: {response.content_type}",
+                        f"Content-Length: {response.content_length}",
+                    ]
 
-                for key, value in response.headers.items():
-                    headers.append(f"{key}: {value}")
+                    for key, value in response.headers.items():
+                        headers.append(f"{key}: {value}")
 
-                if use_keep_alive:
-                    headers.append("Connection: keep-alive")
-                    headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
-                else:
-                    headers.append("Connection: close")
+                    if use_keep_alive:
+                        headers.append("Connection: keep-alive")
+                        headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
+                    else:
+                        headers.append("Connection: close")
 
-                # サーバ名を追加
-                headers.append("Server: MyHTTPServer/0.1")
+                    # サーバ名を追加
+                    headers.append("Server: MyHTTPServer/0.1")
 
-                # ヘッダーとコンテンツを送信、バイナリならそのまま送信
-                header_blob = "\r\n".join(headers) + "\r\n\r\n"
-                if isinstance(response.content, bytes):
-                    client_sock.sendall(header_blob.encode("utf-8") + response.content)
-                else:
-                    client_sock.sendall(
-                        header_blob.encode("utf-8") + response.content.encode("utf-8")
-                    )
+                    # ヘッダーとコンテンツを送信、バイナリならそのまま送信
+                    header_blob = "\r\n".join(headers) + "\r\n\r\n"
+                    if isinstance(response.content, bytes):
+                        client_sock.sendall(
+                            header_blob.encode("utf-8") + response.content
+                        )
+                    else:
+                        client_sock.sendall(
+                            header_blob.encode("utf-8")
+                            + response.content.encode("utf-8")
+                        )
 
-                if not use_keep_alive:
-                    print(f"Closing connection with {addr}")
-                    return
+                    if not use_keep_alive:
+                        print(f"Closing connection with {addr}")
+                        return
 
-            except socket.timeout:
-                print(f"Connection with {addr} timed out.")
-            except Exception as e:
-                print(f"Error keeping connection with {addr}: {e}")
-
+                except socket.timeout:
+                    print(f"Connection with {addr} timed out.")
+                except Exception as e:
+                    print(f"Error keeping connection with {addr}: {e}")
+    except ssl.SSLError as e:
+        print(f"SSL error with client {addr}: {e}")
     except Exception as e:
         print(f"Error handling client {addr}: {e}")
 
 
 def server():
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    try:
+        context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+    except Exception as e:
+        print(f"Error loading SSL certificate: {e}")
+        return
+
     # ipv4, tcp
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -148,7 +162,7 @@ def server():
                 while True:
                     client_sock, addr = server_sock.accept()
 
-                    executor.submit(handle_client, client_sock, addr)
+                    executor.submit(handle_client, client_sock, addr, context)
 
             except KeyboardInterrupt:
                 print("stop server")
