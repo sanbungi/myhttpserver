@@ -16,10 +16,12 @@ from utils import (
     get_keep_alive,
     get_preferred_encoding,
     compress_content,
+    build_response,
     response_200,
     response_301,
     response_403,
     response_404,
+    response_413,
     response_500,
 )
 from config import load_config
@@ -113,19 +115,79 @@ def make_response(filepath: str = ".") -> HTTPResponse:
         return response_500()
 
 
+def send_response(
+    client_sock, response: HTTPResponse, request: HTTPRequest, addr
+) -> bool:
+    keep_alive_timeout = config.server.keep_alive_timeout
+    compression_priority = config.compression.priority
+
+    use_keep_alive = get_keep_alive(request)
+
+    # HTTPアクセスログ
+    http_logger.info(
+        f"{addr[0]} - {request.method} {request.path} - {response.status_code}"
+    )
+
+    accept_encoding = request.headers.get("Accept-Encoding", "")
+    http_logger.debug(f"Accept-Encoding: {accept_encoding}")
+
+    # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
+    headers = [
+        f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
+        f"Content-Type: {response.content_type}",
+        f"Content-Length: {response.content_length}",
+    ]
+
+    for key, value in response.headers.items():
+        headers.append(f"{key}: {value}")
+
+    if use_keep_alive:
+        headers.append("Connection: keep-alive")
+        headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
+    else:
+        headers.append("Connection: close")
+
+    # サーバ名を追加
+    headers.append("Server: MyHTTPServer/0.1")
+
+    # 圧縮方式を決定して適用
+    encoding = get_preferred_encoding(accept_encoding, compression_priority)
+    if encoding:
+        headers.append(f"Content-Encoding: {encoding}")
+        response.content = compress_content(response.content, encoding)
+        headers[2] = f"Content-Length: {len(response.content)}"
+
+    # ヘッダーとコンテンツを送信
+    header_blob = "\r\n".join(headers) + "\r\n\r\n"
+
+    # contentがbytesかstrかで処理を分ける
+    if isinstance(response.content, bytes):
+        content_bytes = response.content
+    else:
+        content_bytes = response.content.encode("utf-8")
+    client_sock.sendall(header_blob.encode("utf-8") + content_bytes)
+
+    return use_keep_alive
+
+
 def handle_client(client_sock, addr):
     try:
         keep_alive_timeout = config.server.keep_alive_timeout
         client_sock.settimeout(keep_alive_timeout)
 
-        # 圧縮方式の優先度を定義
-        compression_priority = config.compression.priority
-
         while True:
             try:
-                raw_request = client_sock.recv(config.server.request_bytes).decode("utf-8")
+                raw_request = client_sock.recv(config.server.request_bytes).decode(
+                    "utf-8"
+                )
 
                 if not raw_request:
+                    return
+
+                # リクエストバイト制限を超えた場合に413を返す
+                if len(raw_request) > config.server.request_bytes:
+                    response = response_413()
+                    client_sock.sendall(build_response(response))
                     return
 
                 request = parse_request(raw_request)
@@ -133,50 +195,8 @@ def handle_client(client_sock, addr):
 
                 response = make_response(request.path)
 
-                use_keep_alive = get_keep_alive(request)
-
-                # HTTPアクセスログ
-                http_logger.info(
-                    f"{addr[0]} - {request.method} {request.path} - {response.status_code}"
-                )
-                accept_encoding = request.headers.get("Accept-Encoding", "")
-                http_logger.debug(f"Accept-Encoding: {accept_encoding}")
-
-                # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
-                headers = [
-                    f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
-                    f"Content-Type: {response.content_type}",
-                    f"Content-Length: {response.content_length}",
-                ]
-
-                for key, value in response.headers.items():
-                    headers.append(f"{key}: {value}")
-
-                if use_keep_alive:
-                    headers.append("Connection: keep-alive")
-                    headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
-                else:
-                    headers.append("Connection: close")
-
-                # サーバ名を追加
-                headers.append("Server: MyHTTPServer/0.1")
-
-                # 圧縮方式を決定して適用
-                encoding = get_preferred_encoding(accept_encoding, compression_priority)
-                if encoding:
-                    headers.append(f"Content-Encoding: {encoding}")
-                    response.content = compress_content(response.content, encoding)
-                    headers[2] = f"Content-Length: {len(response.content)}"
-
-                # ヘッダーとコンテンツを送信
-                header_blob = "\r\n".join(headers) + "\r\n\r\n"
-
-                # contentがbytesかstrかで処理を分ける
-                if isinstance(response.content, bytes):
-                    content_bytes = response.content
-                else:
-                    content_bytes = response.content.encode("utf-8")
-                client_sock.sendall(header_blob.encode("utf-8") + content_bytes)
+                # レスポンスを送信し、Keep-Aliveを継続するか判定
+                use_keep_alive = send_response(client_sock, response, request, addr)
 
                 if not use_keep_alive:
                     system_logger.debug(f"Closing connection with {addr}")
@@ -184,8 +204,10 @@ def handle_client(client_sock, addr):
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
+                return
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
+                return
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:

@@ -152,6 +152,13 @@ def response_404() -> HTTPResponse:
         "404 Not Found",
     )
 
+def response_413() -> HTTPResponse:
+    return HTTPResponse(
+        413,
+        "text/plain; charset=utf-8",
+        "413 Payload Too Large",
+    )
+
 
 def response_500() -> HTTPResponse:
     return HTTPResponse(
@@ -193,3 +200,30 @@ def compress_content(content: bytes, encoding: str) -> bytes:
         return cctx.compress(content)
     else:
         return content
+
+# 任意の番号のヘッダーを構築してレスポンス全体を返す
+def build_response(response: HTTPResponse, close_connection: bool = True) -> bytes:
+    headers = [
+        f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
+        f"Content-Type: {response.content_type}",
+        f"Content-Length: {response.content_length}",
+    ]
+    
+    # レスポンスオブジェクトに含まれる追加ヘッダー
+    for key, value in response.headers.items():
+        headers.append(f"{key}: {value}")
+    
+    if close_connection:
+        headers.append("Connection: close")
+    
+    headers.append("Server: MyHTTPServer/0.1")
+    
+    header_blob = "\r\n".join(headers) + "\r\n\r\n"
+    
+    # contentがbytesかstrかで処理を分ける
+    if isinstance(response.content, bytes):
+        content_bytes = response.content
+    else:
+        content_bytes = response.content.encode("utf-8")
+    
+    return header_blob.encode("utf-8") + content_bytes
