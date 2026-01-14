@@ -89,6 +89,31 @@ def parse_args():
         default=config.server.webroot,
         help=f"Web root directory (default: {config.server.webroot})",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config.toml",
+        help="Configuration file path (default: config.toml)",
+    )
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        default=config.server.http_port,
+        help=f"HTTP port (default: {config.server.http_port})",
+    )
+    parser.add_argument(
+        "--enable-https",
+        action="store_true",
+        default=config.server.use_ssl,
+        help="Enable HTTPS server",
+    )
+    parser.add_argument(
+        "--https-port",
+        type=int,
+        default=config.server.https_port,
+        help=f"HTTPS port (default: {config.server.https_port})",
+    )
+
     return parser.parse_args()
 
 
@@ -306,5 +331,11 @@ def server():
 if __name__ == "__main__":
     args = parse_args()
     config.server.webroot = args.webroot
+    config.server.http_port = args.http_port
+    config.server.use_ssl = args.enable_https
+    config.server.https_port = args.https_port
+    config_path = args.config
+    if config_path != "config.toml":
+        config = load_config(config_path)
     system_logger.info(f"Using webroot: {config.server.webroot}")
     server()
