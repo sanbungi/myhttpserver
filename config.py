@@ -17,6 +17,7 @@ class ServerConfig:
     also_http: bool
     keep_alive_timeout: int
     max_workers: int
+    request_bytes: int
 
 
 @dataclass

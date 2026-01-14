@@ -123,7 +123,7 @@ def handle_client(client_sock, addr):
 
         while True:
             try:
-                raw_request = client_sock.recv(1024).decode("utf-8")
+                raw_request = client_sock.recv(config.server.request_bytes).decode("utf-8")
 
                 if not raw_request:
                     return

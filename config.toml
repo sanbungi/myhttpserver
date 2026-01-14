@@ -5,6 +5,7 @@ use_ssl = true
 also_http = true
 keep_alive_timeout = 75
 max_workers = 10
+request_bytes = 8192
 
 [ssl]
 cert_file = "server.crt"
