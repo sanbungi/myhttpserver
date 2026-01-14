@@ -49,7 +49,7 @@ system_logger.addHandler(system_console)
 
 # HTTPアクセスログ設定
 http_logger = logging.getLogger("http")
-http_logger.setLevel(logging.DEBUG)
+http_logger.setLevel(logging.INFO)
 http_handler = RotatingFileHandler(
     "logs/access.log", maxBytes=10 * 1024 * 1024, backupCount=5
 )
@@ -196,6 +196,7 @@ def server():
         # ipv4, tcp
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
             server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             server_sock.bind(("", port))
 
             # 接続待ち
