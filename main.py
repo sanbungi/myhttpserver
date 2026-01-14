@@ -7,6 +7,7 @@ from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
 from FileCache import FileCache
+import argparse
 
 from utils import (
     HTTPRequest,
@@ -78,6 +79,17 @@ def setup_logging():
 
 # ログ設定を適用
 setup_logging()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="My HTTP Server")
+    parser.add_argument(
+        "--webroot",
+        type=str,
+        default=config.server.webroot,
+        help=f"Web root directory (default: {config.server.webroot})",
+    )
+    return parser.parse_args()
 
 
 def make_response(filepath: str = ".") -> HTTPResponse:
@@ -292,4 +304,7 @@ def server():
 
 
 if __name__ == "__main__":
+    args = parse_args()
+    config.server.webroot = args.webroot
+    system_logger.info(f"Using webroot: {config.server.webroot}")
     server()
