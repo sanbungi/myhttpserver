@@ -1,0 +1,23 @@
+[server]
+http_port = 8000
+https_port = 8443
+use_ssl = true
+also_http = true
+keep_alive_timeout = 75
+max_workers = 10
+
+[ssl]
+cert_file = "server.crt"
+key_file = "server.key"
+
+[logging]
+dir = "logs"
+system_log = "system.log"
+access_log = "access.log"
+max_bytes = 10485760
+backup_count = 5
+system_level = "INFO"
+access_level = "INFO"
+
+[compression]
+priority = ["zstd", "gzip"]

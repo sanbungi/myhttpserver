@@ -3,13 +3,9 @@ import socket
 import ssl
 from concurrent.futures import ThreadPoolExecutor
 import threading
-from pprint import pprint
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-import gzip
-from io import BytesIO
-import zstandard as zstd
 
 from utils import (
     HTTPRequest,
@@ -26,38 +22,57 @@ from utils import (
     response_404,
     response_500,
 )
+from config import load_config
 
-# logsディレクトリを作成
-os.makedirs("logs", exist_ok=True)
+# 設定をロード
+config = load_config()
 
-
-# システムログ設定
+# ロガーの定義
 system_logger = logging.getLogger("system")
-system_logger.setLevel(logging.INFO)
-system_handler = RotatingFileHandler(
-    "logs/system.log", maxBytes=10 * 1024 * 1024, backupCount=5
-)
-system_handler.setFormatter(
-    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-)
-system_logger.addHandler(system_handler)
-system_console = logging.StreamHandler()
-system_console.setFormatter(
-    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-)
-system_logger.addHandler(system_console)
-
-# HTTPアクセスログ設定
 http_logger = logging.getLogger("http")
-http_logger.setLevel(logging.INFO)
-http_handler = RotatingFileHandler(
-    "logs/access.log", maxBytes=10 * 1024 * 1024, backupCount=5
-)
-http_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-http_logger.addHandler(http_handler)
-http_console = logging.StreamHandler()
-http_console.setFormatter(logging.Formatter("%(asctime)s [HTTP] %(message)s"))
-http_logger.addHandler(http_console)
+
+
+def setup_logging():
+    """ログ設定の初期化"""
+    log_dir = Path(config.logging.dir)
+    # logsディレクトリを作成
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # システムログ設定
+    system_logger.setLevel(config.logging.system_level.upper())
+    system_log_path = log_dir / config.logging.system_log
+    system_handler = RotatingFileHandler(
+        system_log_path,
+        maxBytes=config.logging.max_bytes,
+        backupCount=config.logging.backup_count,
+    )
+    system_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
+    system_logger.addHandler(system_handler)
+    system_console = logging.StreamHandler()
+    system_console.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
+    system_logger.addHandler(system_console)
+
+    # HTTPアクセスログ設定
+    http_logger.setLevel(config.logging.access_level.upper())
+    access_log_path = log_dir / config.logging.access_log
+    http_handler = RotatingFileHandler(
+        access_log_path,
+        maxBytes=config.logging.max_bytes,
+        backupCount=config.logging.backup_count,
+    )
+    http_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    http_logger.addHandler(http_handler)
+    http_console = logging.StreamHandler()
+    http_console.setFormatter(logging.Formatter("%(asctime)s [HTTP] %(message)s"))
+    http_logger.addHandler(http_console)
+
+
+# ログ設定を適用
+setup_logging()
 
 
 def make_response(filepath: str = ".") -> HTTPResponse:
@@ -100,11 +115,11 @@ def make_response(filepath: str = ".") -> HTTPResponse:
 
 def handle_client(client_sock, addr):
     try:
-        keep_alive_timeout = 75
+        keep_alive_timeout = config.server.keep_alive_timeout
         client_sock.settimeout(keep_alive_timeout)
 
         # 圧縮方式の優先度を定義
-        compression_priority = ["zstd", "gzip"]
+        compression_priority = config.compression.priority
 
         while True:
             try:
@@ -178,16 +193,13 @@ def handle_client(client_sock, addr):
 
 
 def server():
-    USE_SSL = True
-    ALSO_HTTP = True
-    HTTP_PORT = 8000
-    HTTPS_PORT = 8443
-
     context = None
-    if USE_SSL:
+    if config.server.use_ssl:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         try:
-            context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+            context.load_cert_chain(
+                certfile=config.ssl.cert_file, keyfile=config.ssl.key_file
+            )
         except Exception as e:
             system_logger.error(f"Error loading SSL certificate: {e}")
             return
@@ -205,7 +217,7 @@ def server():
             protocol = "HTTPS" if ssl_context else "HTTP"
             system_logger.info(f"Start {protocol} server at port {port}")
 
-            with ThreadPoolExecutor(max_workers=10) as executor:
+            with ThreadPoolExecutor(max_workers=config.server.max_workers) as executor:
                 while True:
                     client_sock, addr = server_sock.accept()
 
@@ -229,18 +241,22 @@ def server():
 
     threads = []
 
-    if USE_SSL:
+    if config.server.use_ssl:
         # HTTPS Server
         t_https = threading.Thread(
-            target=run_server_loop, args=(HTTPS_PORT, context), daemon=True
+            target=run_server_loop,
+            args=(config.server.https_port, context),
+            daemon=True,
         )
         t_https.start()
         threads.append(t_https)
 
-    if ALSO_HTTP or not USE_SSL:
+    if config.server.also_http or not config.server.use_ssl:
         # HTTP Server
         t_http = threading.Thread(
-            target=run_server_loop, args=(HTTP_PORT, None), daemon=True
+            target=run_server_loop,
+            args=(config.server.http_port, None),
+            daemon=True,
         )
         t_http.start()
         threads.append(t_http)
