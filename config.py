@@ -13,6 +13,7 @@ class SSLConfig:
 class ServerConfig:
     http_port: int
     https_port: int
+    webroot: str
     use_ssl: bool
     also_http: bool
     keep_alive_timeout: int

@@ -87,10 +87,10 @@ def make_response(filepath: str = ".") -> HTTPResponse:
     try:
         # pathがrootならindexを返す
         if path == Path("/"):
-            content = cache.read("html/index.html", mode="r")
+            content = cache.read(f"{config.server.webroot}/index.html", mode="r")
             return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
 
-        server_file_path = Path("html") / path.relative_to("/")
+        server_file_path = Path(config.server.webroot) / path.relative_to("/")
 
         # ディレクトリならその中のindex.htmlを返す
         if server_file_path.is_dir():
