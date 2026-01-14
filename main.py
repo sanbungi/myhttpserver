@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
+from FileCache import FileCache
 
 from utils import (
     HTTPRequest,
@@ -32,6 +33,8 @@ config = load_config()
 # ロガーの定義
 system_logger = logging.getLogger("system")
 http_logger = logging.getLogger("http")
+
+cache = FileCache()
 
 
 def setup_logging():
@@ -79,13 +82,13 @@ setup_logging()
 
 def make_response(filepath: str = ".") -> HTTPResponse:
     path = Path(filepath)
+    system_logger.debug(cache.stats())
 
     try:
         # pathがrootならindexを返す
         if path == Path("/"):
-            with open(f"html/index.html", "r", encoding="utf-8") as f:
-                content = f.read()
-                return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
+            content = cache.read("html/index.html", mode="r")
+            return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
 
         server_file_path = Path("html") / path.relative_to("/")
 
@@ -99,13 +102,11 @@ def make_response(filepath: str = ".") -> HTTPResponse:
         content_type, is_binary = get_content_type(server_file_path)
 
         if is_binary:
-            with open(server_file_path, "rb") as f:
-                content = f.read()
+            content = cache.read(server_file_path, mode="rb")
         else:
-            with open(server_file_path, "r", encoding="utf-8") as f:
-                text_content = f.read()
-                # 日本語等だとカウントがずれるので先にエンコード
-                content = text_content.encode("utf-8")
+            content = cache.read(server_file_path, mode="r")
+            # 日本語等だとカウントがずれるので先にエンコード
+            content = content.encode("utf-8")
 
         return response_200(content, content_type)
 
