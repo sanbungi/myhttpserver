@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Union, Dict
+import gzip
+from io import BytesIO
+import zstandard as zstd
 
 
 class HTTPRequest:
@@ -164,3 +167,26 @@ def response_403() -> HTTPResponse:
         "text/plain; charset=utf-8",
         "403 Forbidden",
     )
+
+# リストから優先される圧縮方式を取得
+def get_preferred_encoding(accept_encoding: str, compression_priority: list[str]) -> str:
+    for encoding in compression_priority:
+        if encoding in accept_encoding:
+            return encoding
+    return ""
+
+
+def compress_content(content: bytes, encoding: str) -> bytes:
+    if not isinstance(content, bytes):
+        content = content.encode("utf-8")
+    
+    if encoding == "gzip":
+        out = BytesIO()
+        with gzip.GzipFile(fileobj=out, mode="wb") as f:
+            f.write(content)
+        return out.getvalue()
+    elif encoding == "zstd":
+        cctx = zstd.ZstdCompressor()
+        return cctx.compress(content)
+    else:
+        return content

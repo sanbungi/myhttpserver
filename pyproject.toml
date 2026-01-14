@@ -1,3 +1,11 @@
+[project]
+name = "myhttpserver"
+version = "0.0.1"
+description = ""
+dependencies = [
+    "zstandard>=0.25.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 

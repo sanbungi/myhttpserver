@@ -9,6 +9,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import gzip
 from io import BytesIO
+import zstandard as zstd
 
 from utils import (
     HTTPRequest,
@@ -17,6 +18,8 @@ from utils import (
     get_http_reason_phrase,
     get_content_type,
     get_keep_alive,
+    get_preferred_encoding,
+    compress_content,
     response_200,
     response_301,
     response_403,
@@ -100,6 +103,9 @@ def handle_client(client_sock, addr):
         keep_alive_timeout = 75
         client_sock.settimeout(keep_alive_timeout)
 
+        # 圧縮方式の優先度を定義
+        compression_priority = ["zstd", "gzip"]
+
         while True:
             try:
                 raw_request = client_sock.recv(1024).decode("utf-8")
@@ -140,23 +146,22 @@ def handle_client(client_sock, addr):
                 # サーバ名を追加
                 headers.append("Server: MyHTTPServer/0.1")
 
-                # gzip要求があれば圧縮
-                if "gzip" in accept_encoding:
-                    headers.append("Content-Encoding: gzip")
-                    out = BytesIO()
-                    with gzip.GzipFile(fileobj=out, mode="wb") as f:
-                        f.write(response.content)
-                    response.content = out.getvalue()
+                # 圧縮方式を決定して適用
+                encoding = get_preferred_encoding(accept_encoding, compression_priority)
+                if encoding:
+                    headers.append(f"Content-Encoding: {encoding}")
+                    response.content = compress_content(response.content, encoding)
                     headers[2] = f"Content-Length: {len(response.content)}"
 
-                # ヘッダーとコンテンツを送信、バイナリならそのまま送信
+                # ヘッダーとコンテンツを送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
+                
+                # contentがbytesかstrかで処理を分ける
                 if isinstance(response.content, bytes):
-                    client_sock.sendall(header_blob.encode("utf-8") + response.content)
+                    content_bytes = response.content
                 else:
-                    client_sock.sendall(
-                        header_blob.encode("utf-8") + response.content.encode("utf-8")
-                    )
+                    content_bytes = response.content.encode("utf-8")
+                client_sock.sendall(header_blob.encode("utf-8") + content_bytes)
 
                 if not use_keep_alive:
                     system_logger.debug(f"Closing connection with {addr}")
