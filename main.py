@@ -155,7 +155,7 @@ def handle_client(client_sock, addr):
 
                 # ヘッダーとコンテンツを送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
-                
+
                 # contentがbytesかstrかで処理を分ける
                 if isinstance(response.content, bytes):
                     content_bytes = response.content

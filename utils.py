@@ -168,8 +168,11 @@ def response_403() -> HTTPResponse:
         "403 Forbidden",
     )
 
+
 # リストから優先される圧縮方式を取得
-def get_preferred_encoding(accept_encoding: str, compression_priority: list[str]) -> str:
+def get_preferred_encoding(
+    accept_encoding: str, compression_priority: list[str]
+) -> str:
     for encoding in compression_priority:
         if encoding in accept_encoding:
             return encoding
@@ -179,7 +182,7 @@ def get_preferred_encoding(accept_encoding: str, compression_priority: list[str]
 def compress_content(content: bytes, encoding: str) -> bytes:
     if not isinstance(content, bytes):
         content = content.encode("utf-8")
-    
+
     if encoding == "gzip":
         out = BytesIO()
         with gzip.GzipFile(fileobj=out, mode="wb") as f:
