@@ -7,7 +7,8 @@ from pprint import pprint
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-
+import gzip
+from io import BytesIO
 
 from utils import (
     HTTPRequest,
@@ -45,7 +46,7 @@ system_logger.addHandler(system_console)
 
 # HTTPアクセスログ設定
 http_logger = logging.getLogger("http")
-http_logger.setLevel(logging.INFO)
+http_logger.setLevel(logging.DEBUG)
 http_handler = RotatingFileHandler(
     "logs/access.log", maxBytes=10 * 1024 * 1024, backupCount=5
 )
@@ -107,6 +108,7 @@ def handle_client(client_sock, addr):
                     return
 
                 request = parse_request(raw_request)
+                http_logger.debug(f"Received request: {request}")
 
                 response = make_response(request.path)
 
@@ -116,6 +118,8 @@ def handle_client(client_sock, addr):
                 http_logger.info(
                     f"{addr[0]} - {request.method} {request.path} - {response.status_code}"
                 )
+                accept_encoding = request.headers.get("Accept-Encoding", "")
+                http_logger.debug(f"Accept-Encoding: {accept_encoding}")
 
                 # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
                 headers = [
@@ -135,6 +139,15 @@ def handle_client(client_sock, addr):
 
                 # サーバ名を追加
                 headers.append("Server: MyHTTPServer/0.1")
+
+                # gzip要求があれば圧縮
+                if "gzip" in accept_encoding:
+                    headers.append("Content-Encoding: gzip")
+                    out = BytesIO()
+                    with gzip.GzipFile(fileobj=out, mode="wb") as f:
+                        f.write(response.content)
+                    response.content = out.getvalue()
+                    headers[2] = f"Content-Length: {len(response.content)}"
 
                 # ヘッダーとコンテンツを送信、バイナリならそのまま送信
                 header_blob = "\r\n".join(headers) + "\r\n\r\n"
