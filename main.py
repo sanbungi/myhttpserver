@@ -1,24 +1,27 @@
+import argparse
+import logging
 import os
 import socket
 import ssl
-from concurrent.futures import ThreadPoolExecutor
 import threading
-from pathlib import Path
-import logging
+from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
-from FileCache import FileCache
-import argparse
+from pathlib import Path
 
+import ipdb
+
+from config import load_config
+from FileCache import FileCache
 from utils import (
     HTTPRequest,
     HTTPResponse,
-    parse_request,
-    get_http_reason_phrase,
+    build_response,
+    compress_content,
     get_content_type,
+    get_http_reason_phrase,
     get_keep_alive,
     get_preferred_encoding,
-    compress_content,
-    build_response,
+    parse_request,
     response_200,
     response_301,
     response_403,
@@ -26,7 +29,6 @@ from utils import (
     response_413,
     response_500,
 )
-from config import load_config
 
 # 設定をロード
 config = load_config()
@@ -40,6 +42,7 @@ cache = FileCache()
 
 def setup_logging():
     """ログ設定の初期化"""
+
     log_dir = Path(config.logging.dir)
     # logsディレクトリを作成
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -125,6 +128,7 @@ def make_response(filepath: str = ".") -> HTTPResponse:
         # pathがrootならindexを返す
         if path == Path("/"):
             content = cache.read(f"{config.server.webroot}/index.html", mode="r")
+            # ipdb.set_trace()
             return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
 
         server_file_path = Path(config.server.webroot) / path.relative_to("/")
@@ -149,7 +153,7 @@ def make_response(filepath: str = ".") -> HTTPResponse:
 
     except PermissionError:
         return response_403()
-    except Exception as e:
+    except Exception:
         return response_500()
 
 
@@ -230,6 +234,7 @@ def handle_client(client_sock, addr):
 
                 request = parse_request(raw_request)
                 http_logger.debug(f"Received request: {request}")
+                ipdb.set_trace()
 
                 response = make_response(request.path)
 
