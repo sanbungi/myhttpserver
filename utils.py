@@ -56,8 +56,8 @@ class HttpError(Exception):
     message: str
 
 
-def preparse_guard(raw_request):
-    if not raw_request:
+def preparse_guard(raw_request: str):
+    if len(raw_request) == 0:
         raise HttpError(400, "NO CONTENT", "NO COTENT")
 
     # リクエストバイト制限を超えた場合に413を返す
@@ -89,20 +89,15 @@ def parse_request(request_text: str) -> HTTPRequest:
     return HTTPRequest(method, path, version, headers, body)
 
 
-def vetify_request(request: HTTPRequest) -> HTTPRequest:
+def vetify_request(request: HTTPRequest):
     print(request.headers)
     headers = request.headers
     hosts = [headers["Host"]] if "Host" in headers else []
     print(hosts)
     if len(hosts) == 0:
-        raise HttpParseError(
-            HttpParseErrorCode.MISSING_HOST, "Host Header is requred", 400
-        )
+        raise HttpError(400, "MISSING_HOST", "Host Header is requeired")
     if len(hosts) > 1:
-        raise HttpParseError(
-            HttpParseErrorCode.DUPLICATE_HOST, "Multiple Host headers", 400
-        )
-    return request
+        raise HttpError(400, "DUPLICATE_HOST", "Multiple Host headers")
 
 
 # HTTPステータスコードから理由フレーズを返す
@@ -194,6 +189,14 @@ def response_200(content: bytes, content_type: str) -> HTTPResponse:
     )
 
 
+def response_400() -> HTTPResponse:
+    return HTTPResponse(
+        400,
+        "text/plain; charset=utf-8",
+        "400",
+    )
+
+
 def response_404() -> HTTPResponse:
     return HTTPResponse(
         404,
@@ -224,6 +227,15 @@ def response_403() -> HTTPResponse:
         "text/plain; charset=utf-8",
         "403 Forbidden",
     )
+
+
+def error_response(status: int, msg: str):
+    if status == 400:
+        return response_400()
+    elif status == 404:
+        return response_404()
+    else:
+        return response_500()
 
 
 # リストから優先される圧縮方式を取得

@@ -11,10 +11,12 @@ from pathlib import Path
 from config import load_config
 from FileCache import FileCache
 from utils import (
+    HttpError,
     HTTPRequest,
     HTTPResponse,
     build_response,
     compress_content,
+    error_response,
     get_content_type,
     get_http_reason_phrase,
     get_keep_alive,
@@ -215,6 +217,7 @@ def handle_client(client_sock, addr):
     try:
         keep_alive_timeout = config.server.keep_alive_timeout
         client_sock.settimeout(keep_alive_timeout)
+        # ipdb.set_trace()
 
         while True:
             try:
@@ -223,29 +226,31 @@ def handle_client(client_sock, addr):
                 )
 
                 preparse_guard(raw_request)
-
                 request = parse_request(raw_request)
-                request = vetify_request(request)
+                vetify_request(request)
+
                 http_logger.debug(f"Received request: {request}")
-                # ipdb.set_trace()
 
                 response = make_response(request.path)
 
                 # レスポンスを送信し、Keep-Aliveを継続するか判定
-                use_keep_alive = send_response(client_sock, response, request, addr)
+                # use_keep_alive = send_response(client_sock, response, request, addr)
 
-                if not use_keep_alive:
-                    system_logger.debug(f"Closing connection with {addr}")
-                    return
+            # if not use_keep_alive:
+            #     system_logger.debug(f"Closing connection with {addr}")
+            #     return
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
                 return
+            except HttpError as e:
+                response = error_response(e.status, e.message)
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
                 response = response_500()
-                client_sock.sendall(build_response(response))
-                # return
+
+            client_sock.sendall(build_response(response))
+            # return
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:
