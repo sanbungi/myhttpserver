@@ -1,7 +1,9 @@
-from dataclasses import dataclass, field
-from typing import Union, Dict
 import gzip
+from dataclasses import dataclass, field
+from enum import Enum, auto
 from io import BytesIO
+from typing import Dict, Union
+
 import zstandard as zstd
 
 
@@ -32,6 +34,21 @@ class HTTPResponse:
         return len(self.content.encode("utf-8"))
 
 
+class HttpParseErrorCode(Enum):
+    BAD_REQUEST_LINE = auto()
+    BAD_HEADER_SYNTAX = auto()
+    MISSING_HOST = auto()
+    DUPLICATE_HOST = auto()
+    INVALID_HOST = auto()
+
+
+@dataclass
+class HttpParseError(Exception):
+    code: HttpParseErrorCode
+    message: str
+    status: int = 400
+
+
 def parse_request(request_text: str) -> HTTPRequest:
     lines = request_text.split("\r\n")
 
@@ -54,6 +71,22 @@ def parse_request(request_text: str) -> HTTPRequest:
     body = "\r\n".join(lines[i:])
 
     return HTTPRequest(method, path, version, headers, body)
+
+
+def vetify_request(request: HTTPRequest) -> HTTPRequest:
+    print(request.headers)
+    headers = request.headers
+    hosts = [headers["Host"]] if "Host" in headers else []
+    print(hosts)
+    if len(hosts) == 0:
+        raise HttpParseError(
+            HttpParseErrorCode.MISSING_HOST, "Host Header is requred", 400
+        )
+    if len(hosts) > 1:
+        raise HttpParseError(
+            HttpParseErrorCode.DUPLICATE_HOST, "Multiple Host headers", 400
+        )
+    return request
 
 
 # HTTPステータスコードから理由フレーズを返す
@@ -152,6 +185,7 @@ def response_404() -> HTTPResponse:
         "404 Not Found",
     )
 
+
 def response_413() -> HTTPResponse:
     return HTTPResponse(
         413,
@@ -201,6 +235,7 @@ def compress_content(content: bytes, encoding: str) -> bytes:
     else:
         return content
 
+
 # 任意の番号のヘッダーを構築してレスポンス全体を返す
 def build_response(response: HTTPResponse, close_connection: bool = True) -> bytes:
     headers = [
@@ -208,22 +243,22 @@ def build_response(response: HTTPResponse, close_connection: bool = True) -> byt
         f"Content-Type: {response.content_type}",
         f"Content-Length: {response.content_length}",
     ]
-    
+
     # レスポンスオブジェクトに含まれる追加ヘッダー
     for key, value in response.headers.items():
         headers.append(f"{key}: {value}")
-    
+
     if close_connection:
         headers.append("Connection: close")
-    
+
     headers.append("Server: MyHTTPServer/0.1")
-    
+
     header_blob = "\r\n".join(headers) + "\r\n\r\n"
-    
+
     # contentがbytesかstrかで処理を分ける
     if isinstance(response.content, bytes):
         content_bytes = response.content
     else:
         content_bytes = response.content.encode("utf-8")
-    
+
     return header_blob.encode("utf-8") + content_bytes

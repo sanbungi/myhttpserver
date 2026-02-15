@@ -19,7 +19,7 @@ access_log = "access.log"
 max_bytes = 10485760
 backup_count = 5
 system_level = "DEBUG"
-access_level = "INFO"
+access_level = "DEBUG"
 
 [compression]
 priority = ["zstd", "gzip"]

@@ -8,8 +8,6 @@ from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-import ipdb
-
 from config import load_config
 from FileCache import FileCache
 from utils import (
@@ -28,6 +26,7 @@ from utils import (
     response_404,
     response_413,
     response_500,
+    vetify_request,
 )
 
 # 設定をロード
@@ -233,8 +232,9 @@ def handle_client(client_sock, addr):
                     return
 
                 request = parse_request(raw_request)
+                request = vetify_request(request)
                 http_logger.debug(f"Received request: {request}")
-                ipdb.set_trace()
+                # ipdb.set_trace()
 
                 response = make_response(request.path)
 
@@ -250,7 +250,9 @@ def handle_client(client_sock, addr):
                 return
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
-                return
+                response = response_500()
+                client_sock.sendall(build_response(response))
+                # return
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:
