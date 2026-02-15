@@ -20,11 +20,11 @@ from utils import (
     get_keep_alive,
     get_preferred_encoding,
     parse_request,
+    preparse_guard,
     response_200,
     response_301,
     response_403,
     response_404,
-    response_413,
     response_500,
     vetify_request,
 )
@@ -222,14 +222,7 @@ def handle_client(client_sock, addr):
                     "utf-8"
                 )
 
-                if not raw_request:
-                    return
-
-                # リクエストバイト制限を超えた場合に413を返す
-                if len(raw_request) > config.server.request_bytes:
-                    response = response_413()
-                    client_sock.sendall(build_response(response))
-                    return
+                preparse_guard(raw_request)
 
                 request = parse_request(raw_request)
                 request = vetify_request(request)

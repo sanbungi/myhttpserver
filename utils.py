@@ -49,6 +49,22 @@ class HttpParseError(Exception):
     status: int = 400
 
 
+@dataclass
+class HttpError(Exception):
+    status: int
+    code: str
+    message: str
+
+
+def preparse_guard(raw_request):
+    if not raw_request:
+        raise HttpError(400, "NO CONTENT", "NO COTENT")
+
+    # リクエストバイト制限を超えた場合に413を返す
+    if len(raw_request) > 1024 * 1024 * 100:
+        raise HttpError(413, "TOO LONG", "TOO LONG")
+
+
 def parse_request(request_text: str) -> HTTPRequest:
     lines = request_text.split("\r\n")
 
