@@ -56,44 +56,85 @@ class HttpError(Exception):
     message: str
 
 
+MAX_HEADER_SIZE = 8192
+MAX_BODY_SIZE = 1024 * 1024
+
+
+# ヘッダーとボディを分けて解析
+def receive_safe_request(client_sock):
+    buffer = b""
+    # ヘッダー
+    while b"\r\n\r\n" not in buffer:
+        if len(buffer) > MAX_HEADER_SIZE:
+            raise HttpError(431, "Request Header Fields Too Large", "TOO LONG")
+
+        data = client_sock.recv(4096)
+        if not data:
+            break
+        buffer += data
+
+    if not buffer or b"\r\n\r\n" not in buffer:
+        return None, None
+
+    header_part, body_start = buffer.split(b"\r\n\r\n", 1)
+    header_text = header_part.decode("utf-8")
+
+    content_length = 0
+    for line in header_text.split("\r\n"):
+        if line.lower().startswith("content-length:"):
+            content_length = int(line.split(":")[1].strip())
+            break
+
+    if content_length > MAX_BODY_SIZE:
+        raise HttpError(413, "Payload Too Large", "TOO LONG")
+
+    # Body部分
+    body = body_start
+    while len(body) < content_length:
+        remaining = content_length - len(body)
+        # 残り必要な分か、バッファサイズの小さい方を読み込む
+        data = client_sock.recv(min(remaining, 4096))
+        if not data:
+            break
+        body += data
+
+    print(header_text, body)
+
+    return header_text, body
+
+
 def preparse_guard(raw_request: str):
     if len(raw_request) == 0:
         raise HttpError(400, "NO CONTENT", "NO COTENT")
 
     # リクエストバイト制限を超えた場合に413を返す
-    if len(raw_request) > 1024 * 1024 * 100:
+    if len(raw_request) > 1024 * 10 * 1:
         raise HttpError(413, "TOO LONG", "TOO LONG")
 
 
-def parse_request(request_text: str) -> HTTPRequest:
-    lines = request_text.split("\r\n")
+def parse_request(header: str, body: bytes) -> HTTPRequest:
+    lines = header.strip().split("\r\n")
 
-    # Request Line parsing
     request_line = lines[0]
-    method, path, version = request_line.split(" ")
+    parts = request_line.split(" ")
+
+    method, path, version = parts
 
     headers = {}
-    i = 1
-    while i < len(lines):
-        line = lines[i]
-        if line == "":
-            i += 1
-            break
+    for line in lines[1:]:
         if ": " in line:
             key, value = line.split(": ", 1)
-            headers[key] = value
-        i += 1
-
-    body = "\r\n".join(lines[i:])
+            headers[key.lower()] = value
 
     return HTTPRequest(method, path, version, headers, body)
 
 
 def vetify_request(request: HTTPRequest):
     print(request.method)
+    print(request.headers)
 
     headers = request.headers
-    hosts = [headers["Host"]] if "Host" in headers else []
+    hosts = [headers["host"]] if "host" in headers else []
     if len(hosts) == 0:
         raise HttpError(400, "MISSING_HOST", "Host Header is requeired")
     if len(hosts) > 1:
@@ -217,6 +258,14 @@ def response_413() -> HTTPResponse:
     )
 
 
+def response_431() -> HTTPResponse:
+    return HTTPResponse(
+        431,
+        "text/plain; charset=utf-8",
+        "431 Request Header Fields Too Large",
+    )
+
+
 def response_500() -> HTTPResponse:
     return HTTPResponse(
         500,
@@ -249,7 +298,12 @@ def error_response(status: int, msg: str):
         return response_405()
     elif status == 404:
         return response_404()
+    elif status == 413:
+        return response_413()
+    elif status == 431:
+        return response_431()
     else:
+        print("FALL BACK ERROR 500")
         return response_500()
 
 
@@ -287,14 +341,25 @@ def build_response(response: HTTPResponse, close_connection: bool = True) -> byt
         f"Content-Length: {response.content_length}",
     ]
 
+    # accept_encoding = request.headers.get("Accept-Encoding", "")
     # レスポンスオブジェクトに含まれる追加ヘッダー
     for key, value in response.headers.items():
         headers.append(f"{key}: {value}")
 
     if close_connection:
         headers.append("Connection: close")
+    else:
+        headers.append("Connection: keep-alive")
+        headers.append("Keep-Alive: timeout=61")
 
     headers.append("Server: MyHTTPServer/0.1")
+
+    # encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+    encoding = False
+    if encoding:
+        headers.append(f"Content-Encoding: {encoding}")
+        response.content = compress_content(response.content, encoding)
+        headers[2] = f"Content-Length: {len(response.content)}"
 
     header_blob = "\r\n".join(headers) + "\r\n\r\n"
 

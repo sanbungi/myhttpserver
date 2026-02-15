@@ -4,6 +4,7 @@ import os
 import socket
 import ssl
 import threading
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -22,7 +23,7 @@ from utils import (
     get_keep_alive,
     get_preferred_encoding,
     parse_request,
-    preparse_guard,
+    receive_safe_request,
     response_200,
     response_301,
     response_403,
@@ -221,12 +222,12 @@ def handle_client(client_sock, addr):
 
         while True:
             try:
-                raw_request = client_sock.recv(config.server.request_bytes).decode(
-                    "utf-8"
-                )
+                header, body = receive_safe_request(client_sock)
+                if header is None:  # headerがNoneなら終了とみなす
+                    break
 
-                preparse_guard(raw_request)
-                request = parse_request(raw_request)
+                # preparse_guard(raw_request)
+                request = parse_request(header, body)
                 vetify_request(request)
 
                 http_logger.debug(f"Received request: {request}")
@@ -245,16 +246,22 @@ def handle_client(client_sock, addr):
                 return
             except HttpError as e:
                 response = error_response(e.status, e.message)
+                traceback.print_exc()
+
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
+                traceback.print_exc()
                 response = response_500()
 
+            print(response)
             client_sock.sendall(build_response(response))
+            break
             # return
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:
         system_logger.error(f"Error handling client {addr}: {e}")
+        traceback.print_exc()
 
 
 def server():
