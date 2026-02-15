@@ -90,14 +90,18 @@ def parse_request(request_text: str) -> HTTPRequest:
 
 
 def vetify_request(request: HTTPRequest):
-    print(request.headers)
+    print(request.method)
+
     headers = request.headers
     hosts = [headers["Host"]] if "Host" in headers else []
-    print(hosts)
     if len(hosts) == 0:
         raise HttpError(400, "MISSING_HOST", "Host Header is requeired")
     if len(hosts) > 1:
         raise HttpError(400, "DUPLICATE_HOST", "Multiple Host headers")
+
+    ALLOW_METHOD = ["GET"]
+    if not any(request.method in s for s in ALLOW_METHOD):
+        raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
 
 
 # HTTPステータスコードから理由フレーズを返す
@@ -229,9 +233,20 @@ def response_403() -> HTTPResponse:
     )
 
 
+def response_405() -> HTTPResponse:
+    return HTTPResponse(
+        405,
+        "text/plain; charset=utf-8",
+        "405 Method Not Allowed",
+        {"Allow": "GET, POST, HEAD"},  # HACK Configから参照
+    )
+
+
 def error_response(status: int, msg: str):
     if status == 400:
         return response_400()
+    elif status == 405:
+        return response_405()
     elif status == 404:
         return response_404()
     else:
