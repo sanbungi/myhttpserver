@@ -13,15 +13,10 @@ from config import load_config
 from FileCache import FileCache
 from utils import (
     HttpError,
-    HTTPRequest,
     HTTPResponse,
     build_response,
-    compress_content,
     error_response,
     get_content_type,
-    get_http_reason_phrase,
-    get_keep_alive,
-    get_preferred_encoding,
     parse_request,
     receive_safe_request,
     response_200,
@@ -159,61 +154,6 @@ def make_response(filepath: str = ".") -> HTTPResponse:
         return response_500()
 
 
-def send_response(
-    client_sock, response: HTTPResponse, request: HTTPRequest, addr
-) -> bool:
-    keep_alive_timeout = config.server.keep_alive_timeout
-    compression_priority = config.compression.priority
-
-    use_keep_alive = get_keep_alive(request)
-
-    # HTTPアクセスログ
-    http_logger.info(
-        f"{addr[0]} - {request.method} {request.path} - {response.status_code}"
-    )
-
-    accept_encoding = request.headers.get("Accept-Encoding", "")
-    http_logger.debug(f"Accept-Encoding: {accept_encoding}")
-
-    # ヘッダーをリスト形式で組み立て、その後にCRLFで結合する
-    headers = [
-        f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
-        f"Content-Type: {response.content_type}",
-        f"Content-Length: {response.content_length}",
-    ]
-
-    for key, value in response.headers.items():
-        headers.append(f"{key}: {value}")
-
-    if use_keep_alive:
-        headers.append("Connection: keep-alive")
-        headers.append(f"Keep-Alive: timeout={keep_alive_timeout}")
-    else:
-        headers.append("Connection: close")
-
-    # サーバ名を追加
-    headers.append("Server: MyHTTPServer/0.1")
-
-    # 圧縮方式を決定して適用
-    encoding = get_preferred_encoding(accept_encoding, compression_priority)
-    if encoding:
-        headers.append(f"Content-Encoding: {encoding}")
-        response.content = compress_content(response.content, encoding)
-        headers[2] = f"Content-Length: {len(response.content)}"
-
-    # ヘッダーとコンテンツを送信
-    header_blob = "\r\n".join(headers) + "\r\n\r\n"
-
-    # contentがbytesかstrかで処理を分ける
-    if isinstance(response.content, bytes):
-        content_bytes = response.content
-    else:
-        content_bytes = response.content.encode("utf-8")
-    client_sock.sendall(header_blob.encode("utf-8") + content_bytes)
-
-    return use_keep_alive
-
-
 def handle_client(client_sock, addr):
     try:
         keep_alive_timeout = config.server.keep_alive_timeout
@@ -226,7 +166,6 @@ def handle_client(client_sock, addr):
                 if header is None:  # headerがNoneなら終了とみなす
                     break
 
-                # preparse_guard(raw_request)
                 request = parse_request(header, body)
                 vetify_request(request)
 

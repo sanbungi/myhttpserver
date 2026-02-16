@@ -103,15 +103,6 @@ def receive_safe_request(client_sock):
     return header_text, body
 
 
-def preparse_guard(raw_request: str):
-    if len(raw_request) == 0:
-        raise HttpError(400, "NO CONTENT", "NO COTENT")
-
-    # リクエストバイト制限を超えた場合に413を返す
-    if len(raw_request) > 1024 * 10 * 1:
-        raise HttpError(413, "TOO LONG", "TOO LONG")
-
-
 def parse_request(header: str, body: bytes) -> HTTPRequest:
     lines = header.strip().split("\r\n")
 
