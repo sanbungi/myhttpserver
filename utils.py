@@ -131,8 +131,9 @@ def vetify_request(request: HTTPRequest):
     if len(hosts) > 1:
         raise HttpError(400, "DUPLICATE_HOST", "Multiple Host headers")
 
-    ALLOW_METHOD = ["GET"]
+    ALLOW_METHOD = ["GET", "HEAD"]
     if not any(request.method in s for s in ALLOW_METHOD):
+        print("NOT ALLOW !!!")
         raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
 
 
@@ -278,7 +279,7 @@ def response_405() -> HTTPResponse:
         405,
         "text/plain; charset=utf-8",
         "405 Method Not Allowed",
-        {"Allow": "GET, POST, HEAD"},  # HACK Configから参照
+        {"Allow": "GET, HEAD"},  # HACK Configから参照
     )
 
 
@@ -325,11 +326,20 @@ def compress_content(content: bytes, encoding: str) -> bytes:
 
 
 # 任意の番号のヘッダーを構築してレスポンス全体を返す
-def build_response(response: HTTPResponse, close_connection: bool = True) -> bytes:
+def build_response(
+    response: HTTPResponse,
+    request: HTTPRequest,
+) -> bytes:
+
+    content_length = response.content_length
+    code = response.status_code
+    if (100 <= code < 200) or code in {204, 304} or 400 <= code < 600:
+        content_length = 0
+
     headers = [
         f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
         f"Content-Type: {response.content_type}",
-        f"Content-Length: {response.content_length}",
+        f"Content-Length: {content_length}",
     ]
 
     # accept_encoding = request.headers.get("Accept-Encoding", "")
@@ -337,7 +347,8 @@ def build_response(response: HTTPResponse, close_connection: bool = True) -> byt
     for key, value in response.headers.items():
         headers.append(f"{key}: {value}")
 
-    if close_connection:
+    keep_alive = get_keep_alive(request)
+    if keep_alive:
         headers.append("Connection: close")
     else:
         headers.append("Connection: keep-alive")
@@ -354,10 +365,12 @@ def build_response(response: HTTPResponse, close_connection: bool = True) -> byt
 
     header_blob = "\r\n".join(headers) + "\r\n\r\n"
 
-    # contentがbytesかstrかで処理を分ける
-    if isinstance(response.content, bytes):
-        content_bytes = response.content
-    else:
-        content_bytes = response.content.encode("utf-8")
+    content_bytes = b""
+    if request.method == "GET":
+        # contentがbytesかstrかで処理を分ける
+        if isinstance(response.content, bytes):
+            content_bytes = response.content
+        else:
+            content_bytes = response.content.encode("utf-8")
 
     return header_blob.encode("utf-8") + content_bytes

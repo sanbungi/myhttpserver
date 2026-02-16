@@ -9,14 +9,19 @@ from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from icecream import ic
+from rich import print
+
 from config import load_config
 from FileCache import FileCache
 from utils import (
     HttpError,
+    HTTPRequest,
     HTTPResponse,
     build_response,
     error_response,
     get_content_type,
+    get_keep_alive,
     parse_request,
     receive_safe_request,
     response_200,
@@ -117,8 +122,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def make_response(filepath: str = ".") -> HTTPResponse:
-    path = Path(filepath)
+def make_response(request: HTTPRequest) -> HTTPResponse:
+
+    path = Path(request.path)
     system_logger.debug(cache.stats())
 
     try:
@@ -171,14 +177,7 @@ def handle_client(client_sock, addr):
 
                 http_logger.debug(f"Received request: {request}")
 
-                response = make_response(request.path)
-
-                # レスポンスを送信し、Keep-Aliveを継続するか判定
-                # use_keep_alive = send_response(client_sock, response, request, addr)
-
-            # if not use_keep_alive:
-            #     system_logger.debug(f"Closing connection with {addr}")
-            #     return
+                response = make_response(request)
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
@@ -186,6 +185,9 @@ def handle_client(client_sock, addr):
             except HttpError as e:
                 response = error_response(e.status, e.message)
                 traceback.print_exc()
+                client_sock.sendall(build_response(response, request))
+                client_sock.close()
+                return
 
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
@@ -193,9 +195,13 @@ def handle_client(client_sock, addr):
                 response = response_500()
 
             print(response)
-            client_sock.sendall(build_response(response))
-            break
-            # return
+            client_sock.sendall(build_response(response, request))
+
+            keep_alive = get_keep_alive(request)
+            ic(keep_alive)
+            if not keep_alive:
+                return
+
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")
     except Exception as e:
