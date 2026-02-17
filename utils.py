@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import Dict, Union
 
 import zstandard as zstd
+from icecream import ic
 
 
 class HTTPRequest:
@@ -198,7 +199,8 @@ def get_content_type(file_path: str) -> tuple[str, bool]:
 
 # Keep-Aliveを使うかをヘッダーとHTTPバージョンから判定
 def get_keep_alive(request: HTTPRequest) -> bool:
-    connection_header = request.headers.get("Connection", "").lower()
+    connection_header = request.headers.get("connection", "").lower()
+    ic(connection_header)
 
     # http1.0なら明示的にkeep-alive指定がない限りclose
     if request.version == "HTTP/1.0" and connection_header != "keep-alive":

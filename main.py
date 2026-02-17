@@ -200,6 +200,7 @@ def handle_client(client_sock, addr):
             keep_alive = get_keep_alive(request)
             ic(keep_alive)
             if not keep_alive:
+                client_sock.close()
                 return
 
     except ssl.SSLError as e:
