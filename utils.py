@@ -132,7 +132,7 @@ def vetify_request(request: HTTPRequest):
     if len(hosts) > 1:
         raise HttpError(400, "DUPLICATE_HOST", "Multiple Host headers")
 
-    ALLOW_METHOD = ["GET", "HEAD"]
+    ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
         print("NOT ALLOW !!!")
         raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
@@ -228,6 +228,15 @@ def response_200(content: bytes, content_type: str) -> HTTPResponse:
     )
 
 
+def response_204() -> HTTPResponse:
+    return HTTPResponse(
+        204,
+        "text/plain; charset=utf-8",
+        "",
+        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
+    )
+
+
 def response_400() -> HTTPResponse:
     return HTTPResponse(
         400,
@@ -281,7 +290,7 @@ def response_405() -> HTTPResponse:
         405,
         "text/plain; charset=utf-8",
         "405 Method Not Allowed",
-        {"Allow": "GET, HEAD"},  # HACK Configから参照
+        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
     )
 
 

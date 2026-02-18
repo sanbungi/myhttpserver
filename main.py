@@ -25,6 +25,7 @@ from utils import (
     parse_request,
     receive_safe_request,
     response_200,
+    response_204,
     response_301,
     response_403,
     response_404,
@@ -128,6 +129,10 @@ def make_response(request: HTTPRequest) -> HTTPResponse:
     system_logger.debug(cache.stats())
 
     try:
+        if request.method == "OPTIONS":
+            ic("OPTONS CALLS")
+            return response_204()
+
         # pathがrootならindexを返す
         if path == Path("/"):
             content = cache.read(f"{config.server.webroot}/index.html", mode="r")
