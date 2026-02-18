@@ -6,7 +6,7 @@ def test_200_ok(http_socket):
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1 200" in response
 
 
@@ -15,7 +15,7 @@ def test_404_not_found(http_socket):
     request = b"GET /nonexistent.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1 404" in response
 
 
@@ -25,7 +25,7 @@ def test_400_bad_request_malformed_syntax(http_socket):
     request = b"GET /index.html HTTP/999\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"400" in response
 
 
@@ -34,16 +34,18 @@ def test_400_missing_host_header(http_socket):
     request = b"GET /index.html HTTP/1.1\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"400" in response
 
 
 def test_405_method_not_allowed(http_socket):
     """Section 10.4.6: 405は許可されていないメソッドを示す"""
-    request = b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+    request = (
+        b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+    )
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"405" in response
     # Allowヘッダーが必須
     assert b"Allow:" in response
@@ -51,6 +53,8 @@ def test_405_method_not_allowed(http_socket):
 
 
 def test_408_request_timeout(http_socket):
+    import socket
+
     """Section 10.4.9: 408はタイムアウトを示す（オプション）"""
     # サーバーがタイムアウトを実装している場合のテスト
     # 何も送らずに待機
@@ -69,7 +73,7 @@ def test_413_request_entity_too_large(http_socket):
     large_body = b"A" * 1000000
     request = f"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: {len(large_body)}\r\n\r\n".encode()
     http_socket.send(request)
-    
+
     try:
         # 一部を送信
         http_socket.send(large_body[:10000])
@@ -84,7 +88,7 @@ def test_414_request_uri_too_long(http_socket):
     """Section 10.4.15: 414は長すぎるURIを示す"""
     long_uri = "/path" + "a" * 10000
     request = f"GET {long_uri} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
-    
+
     try:
         http_socket.send(request)
         response = http_socket.recv(4096)
@@ -106,6 +110,6 @@ def test_501_not_implemented(http_socket):
     request = b"TRACE / HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # 501または405が返される
     assert b"501" in response or b"405" in response
