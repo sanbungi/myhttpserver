@@ -109,6 +109,11 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
 
     request_line = lines[0]
     parts = request_line.split(" ")
+    parts = list(filter(None, parts))
+    ic(parts)
+
+    if len(parts) != 3:
+        raise HttpError(400, "", "")
 
     method, path, version = parts
 
