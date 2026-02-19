@@ -171,6 +171,7 @@ def handle_client(client_sock, addr):
         client_sock.settimeout(keep_alive_timeout)
         # ipdb.set_trace()
 
+        request = None
         while True:
             try:
                 header, body = receive_safe_request(client_sock)
@@ -190,7 +191,13 @@ def handle_client(client_sock, addr):
             except HttpError as e:
                 response = error_response(e.status, e.message)
                 traceback.print_exc()
-                client_sock.sendall(build_response(response, request))
+                # requestが未定義の場合（receive_safe_requestやparse_requestで
+                # HttpErrorが発生した場合）はダミーのrequestで応答を構築する
+                if request is None:
+                    dummy_request = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"")
+                    client_sock.sendall(build_response(response, dummy_request))
+                else:
+                    client_sock.sendall(build_response(response, request))
                 client_sock.close()
                 return
 
@@ -213,6 +220,11 @@ def handle_client(client_sock, addr):
     except Exception as e:
         system_logger.error(f"Error handling client {addr}: {e}")
         traceback.print_exc()
+    finally:
+        try:
+            client_sock.close()
+        except Exception:
+            pass
 
 
 def server():
