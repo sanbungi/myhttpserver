@@ -10,3 +10,7 @@ wheels/
 .venv
 logs/
 *.prof
+
+# Benchmark
+.wrk2/
+bench_reports/
