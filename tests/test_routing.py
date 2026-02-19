@@ -6,6 +6,7 @@
 import socket
 import urllib.parse
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -51,11 +52,10 @@ class TestSubdirectoryRouting:
         resp = requests.get(
             f"{server}/site1", timeout=REQUEST_TIMEOUT, allow_redirects=False
         )
-        # 301リダイレクトまたは直接200
-        assert resp.status_code in [200, 301, 302]
-        if resp.status_code in [301, 302]:
-            location = resp.headers.get("Location", "")
-            assert "index.html" in location or "site1" in location
+        # 301リダイレクト
+        assert resp.status_code in [301, 302]
+        location = resp.headers.get("Location", "")
+        assert "index.html" in location or "site1" in location
 
     def test_subdirectory_index(self, server):
         """サブディレクトリのindex.htmlにアクセスできる"""
@@ -161,8 +161,8 @@ class TestPathNormalization:
             f"{server}/%69%6e%64%65%78%2e%68%74%6d%6c",
             timeout=REQUEST_TIMEOUT,
         )
-        # デコードして正しくルーティングされるか
-        assert resp.status_code in [200, 404]
+        # デコードして正しくルーティングされるべき
+        assert resp.status_code == 200
 
     def test_space_in_url_encoded(self, http_socket):
         """URLエンコードされた空白の処理"""

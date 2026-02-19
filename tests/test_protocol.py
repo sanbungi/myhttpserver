@@ -1,6 +1,8 @@
 """RFC 2616: HTTP/1.1プロトコル仕様のテスト"""
 import socket
 
+import pytest
+
 
 def test_http_version_in_response(http_socket):
     """レスポンスはHTTP/1.1バージョンを含む"""
@@ -67,31 +69,32 @@ def test_persistent_connection_default(http_socket):
     assert b"HTTP/1.1" in response2
 
 
+@pytest.mark.xfail(reason="Absolute URI in request not implemented")
 def test_absolute_uri_in_request(server):
     """Section 5.1.2: 絶対URIをサポート（プロキシ向け）"""
     s = socket.socket()
     s.connect(server)
     s.settimeout(5)  # タイムアウト設定
-    
+
     # 絶対URI形式
     request = b"GET http://localhost/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     s.send(request)
     response = s.recv(4096)
     s.close()
-    
-    # サーバーが対応していれば200、未対応なら400
-    assert b"HTTP/1.1" in response
+
+    # RFC 2616 §5.1.2: HTTP/1.1サーバーは絶対URIを受け入れなければならない (MUST)
+    assert b"HTTP/1.1 200" in response
 
 
+@pytest.mark.xfail(reason="Date header not implemented")
 def test_response_has_date_header(http_socket):
     """Section 14.18: レスポンスはDateヘッダーを含むべき"""
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
-    # Dateヘッダーがあることが望ましい（SHOULD）
-    # 必須ではないため、アサーションはしない
-    pass
+
+    # Dateヘッダーがあること (SHOULD)
+    assert b"Date:" in response
 
 
 def test_chunked_transfer_encoding_not_required(http_socket):

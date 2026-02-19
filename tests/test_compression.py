@@ -7,6 +7,7 @@ import gzip
 import socket
 from io import BytesIO
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -59,6 +60,7 @@ class TestContentEncoding:
         encoding = resp.headers.get("Content-Encoding", "")
         assert encoding in ["", "identity"]
 
+    @pytest.mark.xfail(reason="Compression via raw socket not returning Content-Encoding")
     def test_gzip_encoding_if_supported(self, http_socket):
         """Accept-Encoding: gzip のリクエスト（生ソケット）"""
         request = (
@@ -73,14 +75,12 @@ class TestContentEncoding:
 
         assert "200" in status_line
         encoding = headers.get("content-encoding", "")
-        if encoding == "gzip":
-            # gzip圧縮されたボディをデコード
-            decompressed = gzip.decompress(body)
-            assert len(decompressed) > 0
-        else:
-            # gzip未対応の場合は無圧縮で返す
-            assert len(body) > 0
+        assert encoding == "gzip", "Server should return gzip-encoded response"
+        # gzip圧縮されたボディをデコード
+        decompressed = gzip.decompress(body)
+        assert len(decompressed) > 0
 
+    @pytest.mark.xfail(reason="Compression via raw socket not returning Content-Encoding")
     def test_content_length_matches_compressed_body(self, http_socket):
         """圧縮時のContent-Lengthは圧縮後のサイズ"""
         request = (
@@ -94,11 +94,10 @@ class TestContentEncoding:
         status_line, headers, body = _parse_response(response)
 
         content_length = int(headers.get("content-length", "0"))
-        if headers.get("content-encoding") == "gzip":
-            assert content_length == len(body)
-        else:
-            assert content_length == len(body) or content_length == 0
+        assert headers.get("content-encoding") == "gzip", "Server should return gzip"
+        assert content_length == len(body)
 
+    @pytest.mark.xfail(reason="Compression via raw socket not returning Content-Encoding")
     def test_zstd_encoding_if_supported(self, http_socket):
         """Accept-Encoding: zstd のリクエスト"""
         request = (
@@ -113,15 +112,12 @@ class TestContentEncoding:
 
         assert "200" in status_line
         encoding = headers.get("content-encoding", "")
-        if encoding == "zstd":
-            # zstd圧縮されたボディ
-            try:
-                import zstandard as zstd_lib
-                dctx = zstd_lib.ZstdDecompressor()
-                decompressed = dctx.decompress(body)
-                assert len(decompressed) > 0
-            except ImportError:
-                pass  # zstdライブラリがなければスキップ
+        assert encoding == "zstd", "Server should return zstd-encoded response"
+        # zstd圧縮されたボディ
+        import zstandard as zstd_lib
+        dctx = zstd_lib.ZstdDecompressor()
+        decompressed = dctx.decompress(body)
+        assert len(decompressed) > 0
 
 
 # =============================================================================
@@ -186,6 +182,7 @@ class TestMultipleEncodings:
         )
         assert resp_none.text == resp_gzip.text
 
+    @pytest.mark.xfail(reason="Compression via raw socket not returning Content-Encoding")
     def test_encoding_priority(self, http_socket):
         """Accept-Encoding: zstd, gzip のとき優先されるエンコーディング"""
         request = (
@@ -201,8 +198,8 @@ class TestMultipleEncodings:
         assert "200" in status_line
         encoding = headers.get("content-encoding", "")
         # configのpriority = ["zstd", "gzip"] なのでzstdが優先されるはず
-        if encoding:
-            assert encoding in ["zstd", "gzip"]
+        assert encoding, "Content-Encoding header must be present"
+        assert encoding in ["zstd", "gzip"]
 
 
 # =============================================================================

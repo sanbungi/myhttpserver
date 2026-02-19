@@ -9,6 +9,7 @@ import socket
 import time
 from datetime import datetime, timezone
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -46,6 +47,7 @@ def _parse_response(raw):
 # ETag ヘッダー（Section 14.19）
 # =============================================================================
 
+@pytest.mark.xfail(reason="ETag not implemented")
 class TestETag:
     """Section 14.19: ETagヘッダーの検証"""
 
@@ -53,12 +55,11 @@ class TestETag:
         """静的ファイルのレスポンスにETagヘッダーが含まれるか"""
         resp = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         assert resp.status_code == 200
-        # ETagの有無を確認（SHA等のサポートは実装次第）
-        # サーバーがETag未実装でもテストは壊れない
+        # ETagの有無を確認
         etag = resp.headers.get("ETag", "")
-        if etag:
-            # 形式チェック: "xxx" or W/"xxx"
-            assert etag.startswith('"') or etag.startswith('W/"')
+        assert etag, "ETag header must be present"
+        # 形式チェック: "xxx" or W/"xxx"
+        assert etag.startswith('"') or etag.startswith('W/"')
 
     def test_etag_consistent(self, server):
         """同じリソースへの複数リクエストで同じETagが返る"""
@@ -66,8 +67,9 @@ class TestETag:
         resp2 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag1 = resp1.headers.get("ETag", "")
         etag2 = resp2.headers.get("ETag", "")
-        if etag1 and etag2:
-            assert etag1 == etag2
+        assert etag1, "ETag header must be present"
+        assert etag2, "ETag header must be present"
+        assert etag1 == etag2
 
     def test_different_resources_different_etags(self, server):
         """異なるリソースは異なるETagを持つ"""
@@ -75,14 +77,16 @@ class TestETag:
         resp2 = requests.get(f"{server}/test.txt", timeout=REQUEST_TIMEOUT)
         etag1 = resp1.headers.get("ETag", "")
         etag2 = resp2.headers.get("ETag", "")
-        if etag1 and etag2:
-            assert etag1 != etag2
+        assert etag1, "ETag header must be present"
+        assert etag2, "ETag header must be present"
+        assert etag1 != etag2
 
 
 # =============================================================================
 # Last-Modified ヘッダー（Section 14.29）
 # =============================================================================
 
+@pytest.mark.xfail(reason="Last-Modified header not implemented")
 class TestLastModified:
     """Section 14.29: Last-Modifiedヘッダーの検証"""
 
@@ -91,10 +95,10 @@ class TestLastModified:
         resp = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         assert resp.status_code == 200
         last_mod = resp.headers.get("Last-Modified", "")
-        if last_mod:
-            # RFC 1123形式のパース試行
-            parsed = email.utils.parsedate(last_mod)
-            assert parsed is not None
+        assert last_mod, "Last-Modified header must be present"
+        # RFC 1123形式のパース試行
+        parsed = email.utils.parsedate(last_mod)
+        assert parsed is not None
 
     def test_last_modified_consistent(self, server):
         """同じファイルへのリクエストで同じLast-Modifiedが返る"""
@@ -102,17 +106,18 @@ class TestLastModified:
         resp2 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         lm1 = resp1.headers.get("Last-Modified", "")
         lm2 = resp2.headers.get("Last-Modified", "")
-        if lm1 and lm2:
-            assert lm1 == lm2
+        assert lm1, "Last-Modified header must be present"
+        assert lm2, "Last-Modified header must be present"
+        assert lm1 == lm2
 
     def test_last_modified_not_in_future(self, server):
         """Last-Modifiedは未来の日付ではない"""
         resp = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         last_mod = resp.headers.get("Last-Modified", "")
-        if last_mod:
-            parsed = email.utils.parsedate_to_datetime(last_mod)
-            now = datetime.now(timezone.utc)
-            assert parsed <= now
+        assert last_mod, "Last-Modified header must be present"
+        parsed = email.utils.parsedate_to_datetime(last_mod)
+        now = datetime.now(timezone.utc)
+        assert parsed <= now
 
 
 # =============================================================================
@@ -122,13 +127,12 @@ class TestLastModified:
 class TestIfModifiedSince:
     """Section 14.25: If-Modified-Sinceによる条件付きGET"""
 
+    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_with_if_modified_since(self, server):
         """Last-Modifiedの値でIf-Modified-Sinceを送ると304が返る"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         last_mod = resp1.headers.get("Last-Modified", "")
-        if not last_mod:
-            return  # Last-Modified未実装ならスキップ
-
+        assert last_mod, "Last-Modified header must be present"
         resp2 = requests.get(
             f"{server}/index.html",
             headers={"If-Modified-Since": last_mod},
@@ -146,35 +150,36 @@ class TestIfModifiedSince:
         # ファイルは2001年以降に更新されているはず
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_has_no_body(self, server):
         """304レスポンスにはボディが含まれない"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         last_mod = resp1.headers.get("Last-Modified", "")
-        if not last_mod:
-            return
+        assert last_mod, "Last-Modified header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
             headers={"If-Modified-Since": last_mod},
             timeout=REQUEST_TIMEOUT,
         )
-        if resp2.status_code == 304:
-            assert len(resp2.content) == 0
+        assert resp2.status_code == 304
+        assert len(resp2.content) == 0
 
+    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_preserves_headers(self, server):
         """304でもETag, Content-Location等のヘッダーは含まれるべき"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         last_mod = resp1.headers.get("Last-Modified", "")
         etag = resp1.headers.get("ETag", "")
-        if not last_mod:
-            return
+        assert last_mod, "Last-Modified header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
             headers={"If-Modified-Since": last_mod},
             timeout=REQUEST_TIMEOUT,
         )
-        if resp2.status_code == 304 and etag:
+        assert resp2.status_code == 304
+        if etag:
             # ETagは304でも含まれるべき
             assert resp2.headers.get("ETag", "") == etag
 
@@ -188,6 +193,7 @@ class TestIfModifiedSince:
         # 不正な日付は無視して200を返す
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_if_modified_since_future_date(self, server):
         """未来の日付のIf-Modified-Since"""
         future = "Thu, 01 Jan 2099 00:00:00 GMT"
@@ -197,8 +203,7 @@ class TestIfModifiedSince:
             timeout=REQUEST_TIMEOUT,
         )
         # 未来の日付の場合、ファイルはそれより前に変更されているので304
-        # ただし一部実装では200を返す
-        assert resp.status_code in [200, 304]
+        assert resp.status_code == 304
 
 
 # =============================================================================
@@ -208,12 +213,12 @@ class TestIfModifiedSince:
 class TestIfNoneMatch:
     """Section 14.26: If-None-Matchによる条件付きGET"""
 
+    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_304_with_matching_etag(self, server):
         """ETagが一致するIf-None-Matchで304が返る"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag = resp1.headers.get("ETag", "")
-        if not etag:
-            return  # ETag未実装ならスキップ
+        assert etag, "ETag header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
@@ -231,6 +236,7 @@ class TestIfNoneMatch:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_if_none_match_wildcard(self, server):
         """If-None-Match: * はリソースが存在すれば304"""
         resp = requests.get(
@@ -238,15 +244,15 @@ class TestIfNoneMatch:
             headers={"If-None-Match": "*"},
             timeout=REQUEST_TIMEOUT,
         )
-        # リソースが存在するなら304、ETag未実装なら200
-        assert resp.status_code in [200, 304]
+        # リソースが存在するなら304
+        assert resp.status_code == 304
 
+    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_head_with_if_none_match(self, server):
         """HEADリクエスト + If-None-Match"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag = resp1.headers.get("ETag", "")
-        if not etag:
-            return
+        assert etag, "ETag header must be present"
 
         resp2 = requests.head(
             f"{server}/index.html",
@@ -254,7 +260,7 @@ class TestIfNoneMatch:
             timeout=REQUEST_TIMEOUT,
         )
         # HEADでも条件付きリクエストは有効
-        assert resp2.status_code in [200, 304]
+        assert resp2.status_code == 304
 
 
 # =============================================================================
@@ -331,6 +337,7 @@ class TestExpires:
 # If-Match（Section 14.24）
 # =============================================================================
 
+@pytest.mark.xfail(reason="ETag / If-Match not implemented")
 class TestIfMatch:
     """Section 14.24: If-Matchヘッダーの検証"""
 
@@ -338,8 +345,7 @@ class TestIfMatch:
         """ETagが一致するIf-Match"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag = resp1.headers.get("ETag", "")
-        if not etag:
-            return
+        assert etag, "ETag header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
@@ -350,19 +356,18 @@ class TestIfMatch:
         assert resp2.status_code == 200
 
     def test_if_match_non_matching(self, server):
-        """ETagが一致しないIf-Match → 412 Precondition Failed"""
+        """​ETagが一致しないIf-Match → 412 Precondition Failed"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag = resp1.headers.get("ETag", "")
-        if not etag:
-            return
+        assert etag, "ETag header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
             headers={"If-Match": '"different-etag"'},
             timeout=REQUEST_TIMEOUT,
         )
-        # If-Match未実装なら200、実装済みなら412
-        assert resp2.status_code in [200, 412]
+        # ETagが一致しないので412
+        assert resp2.status_code == 412
 
 
 # =============================================================================
@@ -383,6 +388,7 @@ class TestIfUnmodifiedSince:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="If-Unmodified-Since not implemented")
     def test_if_unmodified_since_failed(self, server):
         """過去の日付以降に変更されていれば412"""
         past = "Mon, 01 Jan 2001 00:00:00 GMT"
@@ -391,8 +397,8 @@ class TestIfUnmodifiedSince:
             headers={"If-Unmodified-Since": past},
             timeout=REQUEST_TIMEOUT,
         )
-        # 未実装なら200、実装済みなら412
-        assert resp.status_code in [200, 412]
+        # 過去の日付以降に変更されているので412
+        assert resp.status_code == 412
 
 
 # =============================================================================
@@ -402,14 +408,14 @@ class TestIfUnmodifiedSince:
 class TestConditionalCombinations:
     """複数の条件付きヘッダーの組み合わせ"""
 
+    @pytest.mark.xfail(reason="Conditional requests (ETag + If-Modified-Since) not implemented")
     def test_if_modified_since_and_if_none_match(self, server):
         """If-Modified-SinceとIf-None-Matchの同時使用"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
         etag = resp1.headers.get("ETag", "")
         last_mod = resp1.headers.get("Last-Modified", "")
-
-        if not etag or not last_mod:
-            return
+        assert etag, "ETag header must be present"
+        assert last_mod, "Last-Modified header must be present"
 
         resp2 = requests.get(
             f"{server}/index.html",
@@ -420,7 +426,7 @@ class TestConditionalCombinations:
             timeout=REQUEST_TIMEOUT,
         )
         # 両方満たすなら304
-        assert resp2.status_code in [200, 304]
+        assert resp2.status_code == 304
 
     def test_conditional_on_nonexistent_resource(self, server):
         """存在しないリソースへの条件付きGET"""

@@ -5,6 +5,7 @@ Accept, Accept-Charset, Accept-Encoding, Accept-Language ヘッダーの
 """
 import socket
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -78,19 +79,20 @@ class TestAcceptHeader:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="Accept header content negotiation not implemented")
     def test_accept_incompatible_type(self, server):
         """サーバーが提供できないContent-Type
 
         静的サーバーはAcceptヘッダーを無視してファイルをそのまま返すのが一般的。
-        RFC準拠では406 Not Acceptableを返す可能性もある。
+        RFC準拠では406 Not Acceptableを返す。
         """
         resp = requests.get(
             f"{server}/index.html",
             headers={"Accept": "application/json"},
             timeout=REQUEST_TIMEOUT,
         )
-        # 静的サーバーはAcceptを無視して200を返すか、406を返す
-        assert resp.status_code in [200, 406]
+        # RFC準拠: 提供不能なContent-Typeのみ指定された場合は406
+        assert resp.status_code == 406
 
     def test_accept_absent(self, server):
         """Acceptヘッダーなし（すべてのタイプを受け入れる）"""
@@ -127,6 +129,7 @@ class TestAcceptCharset:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="Accept-Charset content negotiation not implemented")
     def test_accept_charset_iso_8859(self, server):
         """Accept-Charset: iso-8859-1（サーバーがutf-8のみの場合）"""
         resp = requests.get(
@@ -134,8 +137,8 @@ class TestAcceptCharset:
             headers={"Accept-Charset": "iso-8859-1"},
             timeout=REQUEST_TIMEOUT,
         )
-        # サーバーは200を返すか、406を返す（静的サーバーは無視が一般的）
-        assert resp.status_code in [200, 406]
+        # RFC準拠: 提供不能な文字セットのみ指定された場合は406
+        assert resp.status_code == 406
 
     def test_accept_charset_with_quality(self, server):
         """品質値付きAccept-Charset"""
@@ -225,6 +228,7 @@ class TestAcceptEncoding:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(reason="Accept-Encoding content negotiation not implemented")
     def test_accept_encoding_unsupported(self, server):
         """サポートしないエンコーディングのみを指定"""
         resp = requests.get(
@@ -232,8 +236,8 @@ class TestAcceptEncoding:
             headers={"Accept-Encoding": "compress"},
             timeout=REQUEST_TIMEOUT,
         )
-        # 無圧縮で返すか、406を返す
-        assert resp.status_code in [200, 406]
+        # RFC準拠: サポートしないエンコーディングのみの場合は406
+        assert resp.status_code == 406
 
 
 # =============================================================================

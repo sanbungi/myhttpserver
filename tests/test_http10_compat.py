@@ -7,6 +7,7 @@ HTTP/1.0クライアントとの接続動作、ヘッダー処理、
 import socket
 import time
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -111,9 +112,7 @@ class TestHTTP10ConnectionBehavior:
                 s.sendall(b"GET /index.html HTTP/1.0\r\nHost: localhost\r\n\r\n")
                 extra = s.recv(4096)
                 # 接続が閉じられていれば空データか例外
-                if extra:
-                    # もし keep-alive が維持されていても許容
-                    pass
+                assert not extra, "Connection should be closed after HTTP/1.0 response"
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass  # 期待通り：接続は閉じられた
         finally:
@@ -239,6 +238,7 @@ class TestHTTP10ResponseDifferences:
 class TestHTTP10HostHeader:
     """HTTP/1.0ではHostヘッダーは必須ではない（RFC 2616 §14.23）"""
 
+    @pytest.mark.xfail(reason="Server incorrectly requires Host header for HTTP/1.0 requests")
     def test_http10_without_host_header(self):
         """HTTP/1.0でHostヘッダーなしのリクエスト
         HTTP/1.0ではHostは任意。サーバーが400を返す（Hostを必須とする）のも許容。
@@ -247,11 +247,12 @@ class TestHTTP10HostHeader:
         try:
             s.sendall(b"GET /index.html HTTP/1.0\r\n\r\n")
             response = _recv_all(s)
-            # サーバーは200（Hostなしを許容）か400（必須として拒否）のどちらか
+            # サーバーは200（Hostなしを許容）を返すべき
+            # HTTP/1.0ではHostは必須ではない（RFC 2616 §14.23）
             assert b"HTTP/1." in response
             status_line = response.split(b"\r\n")[0]
             status_code = int(status_line.split(b" ")[1])
-            assert status_code in [200, 400], f"Unexpected status: {status_code}"
+            assert status_code == 200, f"HTTP/1.0 without Host should return 200, got {status_code}"
         finally:
             s.close()
 
@@ -286,6 +287,7 @@ class TestVersionNegotiation:
         finally:
             s.close()
 
+    @pytest.mark.xfail(reason="HTTP Version Not Supported (505) not implemented")
     def test_unsupported_http_version(self):
         """未サポートのHTTPバージョンに対するレスポンス"""
         s = _make_socket()
@@ -296,12 +298,9 @@ class TestVersionNegotiation:
                 b"\r\n"
             )
             response = _recv_all(s, timeout=3)
-            # サーバーは処理するか（HTTP/1.1として応答）、
-            # 505 HTTP Version Not Supportedを返すかのどちらか
+            # 505 HTTP Version Not Supportedを返すべき
             if response:
-                first_line = response.split(b"\r\n")[0]
-                # 200か505が期待される
-                assert b"HTTP/1." in first_line or b"505" in first_line
+                assert b"505" in response
         finally:
             s.close()
 
