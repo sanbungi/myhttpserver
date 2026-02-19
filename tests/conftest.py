@@ -26,8 +26,8 @@ def server_process():
     # サーバー起動（ポート8001を使用してテストを隔離、SSLなし）
     proc = subprocess.Popen(
         [sys.executable, str(project_root / "main.py"), "--http-port", str(PORT)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         cwd=str(project_root),
         env=env,
     )
@@ -43,19 +43,6 @@ def server_process():
             requests.exceptions.ConnectTimeout,
         ):
             if attempt == max_retries - 1:
-                # サーバーのエラーログを出力
-                try:
-                    stdout, stderr = proc.communicate(timeout=1)
-                    print(
-                        "Server stdout:",
-                        stdout.decode("utf-8", errors="replace") if stdout else "",
-                    )
-                    print(
-                        "Server stderr:",
-                        stderr.decode("utf-8", errors="replace") if stderr else "",
-                    )
-                except:
-                    pass
                 proc.terminate()
                 proc.wait()
                 raise RuntimeError(f"Failed to start server on {HOST}:{PORT}")
