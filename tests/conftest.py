@@ -2,6 +2,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -23,11 +24,16 @@ def server_process():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(project_root)
 
+    # サーバーのログを一時ファイルにキャプチャ
+    server_log = tempfile.NamedTemporaryFile(
+        mode="w+", prefix="server_", suffix=".log", delete=False
+    )
+
     # サーバー起動（ポート8001を使用してテストを隔離、SSLなし）
     proc = subprocess.Popen(
         [sys.executable, str(project_root / "main.py"), "--http-port", str(PORT)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=server_log,
+        stderr=server_log,
         cwd=str(project_root),
         env=env,
     )
@@ -57,6 +63,19 @@ def server_process():
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+
+    # サーバーログを出力（pytest -s で表示される）
+    server_log.flush()
+    server_log.seek(0)
+    log_content = server_log.read()
+    server_log.close()
+    os.unlink(server_log.name)
+    if log_content:
+        print("\n" + "=" * 60)
+        print("SERVER LOG")
+        print("=" * 60)
+        print(log_content)
+        print("=" * 60)
 
 
 @pytest.fixture(scope="session")
