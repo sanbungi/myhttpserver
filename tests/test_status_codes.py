@@ -69,14 +69,13 @@ def test_408_request_timeout(http_socket):
 
 def test_413_request_entity_too_large(http_socket):
     """Section 10.4.14: 413は大きすぎるリクエストを示す"""
-    # 巨大なボディ（サーバーの制限を超える）
-    large_body = b"A" * 1000000
-    request = f"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: {len(large_body)}\r\n\r\n".encode()
+    declared_size = 2 * 1024 * 1024  # 2MB
+    request = f"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: {declared_size}\r\n\r\n".encode()
     http_socket.send(request)
 
     try:
         # 一部を送信
-        http_socket.send(large_body[:10000])
+        http_socket.send(b"A" * 10000)
         response = http_socket.recv(4096)
         # 413または接続が閉じられる
         assert b"413" in response or len(response) == 0
