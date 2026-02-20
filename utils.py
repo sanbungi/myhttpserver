@@ -127,8 +127,7 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
 
 
 def vetify_request(request: HTTPRequest):
-    print(request.method)
-    print(request.headers)
+    ic(request)
 
     headers = request.headers
     hosts = [headers["host"]] if "host" in headers else []
@@ -139,6 +138,9 @@ def vetify_request(request: HTTPRequest):
 
     if len(request.path) > 255:
         raise HttpError(414, "REQUEST_URL_TOO_LONG", "Request url too long")
+
+    if request.version not in ("HTTP/1.1", "HTTP/1.0"):
+        raise HttpError(400, "INVALID_HTTP_VERSION", "Invalid http version")
 
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):

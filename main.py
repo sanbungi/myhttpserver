@@ -191,19 +191,11 @@ def handle_client(client_sock, addr):
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
+                client_sock.close()
                 return
             except HttpError as e:
                 response = error_response(e.status, e.message)
                 traceback.print_exc()
-                # requestが未定義の場合（receive_safe_requestやparse_requestで
-                # HttpErrorが発生した場合）はダミーのrequestで応答を構築する
-                if request is None:
-                    dummy_request = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"")
-                    client_sock.sendall(build_response(response, dummy_request))
-                else:
-                    client_sock.sendall(build_response(response, request))
-                client_sock.close()
-                return
 
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
