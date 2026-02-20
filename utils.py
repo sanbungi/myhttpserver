@@ -137,6 +137,9 @@ def vetify_request(request: HTTPRequest):
     if len(hosts) > 1:
         raise HttpError(400, "DUPLICATE_HOST", "Multiple Host headers")
 
+    if len(request.path) > 255:
+        raise HttpError(414, "REQUEST_URL_TOO_LONG", "Request url too long")
+
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
         print("NOT ALLOW !!!")
@@ -266,6 +269,14 @@ def response_413() -> HTTPResponse:
     )
 
 
+def response_414() -> HTTPResponse:
+    return HTTPResponse(
+        414,
+        "text/plain; charset=utf-8",
+        "414 URL Too Long",
+    )
+
+
 def response_431() -> HTTPResponse:
     return HTTPResponse(
         431,
@@ -308,6 +319,8 @@ def error_response(status: int, msg: str):
         return response_404()
     elif status == 413:
         return response_413()
+    elif status == 414:
+        return response_414()
     elif status == 431:
         return response_431()
     else:

@@ -159,9 +159,13 @@ def make_response(request: HTTPRequest) -> HTTPResponse:
 
         return response_200(content, content_type)
 
-    except PermissionError:
+    except PermissionError as e:
+        system_logger.error(f"PermissionError {e}")
+        traceback.print_exc()
         return response_403()
-    except Exception:
+    except Exception as e:
+        system_logger.error(f"Failed Make Response {request} {e}")
+        traceback.print_exc()
         return response_500()
 
 
