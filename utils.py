@@ -60,6 +60,18 @@ class HttpError(Exception):
 MAX_HEADER_SIZE = 8192
 MAX_BODY_SIZE = 1024 * 1024
 
+HTTP_METHODS = {
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+    "PATCH",
+    "TRACE",
+    "CONNECT",
+}
+
 
 # ヘッダーとボディを分けて解析
 def receive_safe_request(client_sock):
@@ -141,6 +153,9 @@ def vetify_request(request: HTTPRequest):
 
     if request.version not in ("HTTP/1.1", "HTTP/1.0"):
         raise HttpError(400, "INVALID_HTTP_VERSION", "Invalid http version")
+
+    if request.method not in HTTP_METHODS:
+        raise HttpError(400, "INVALID_HTTP_METHOD", "Invalid http method")
 
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
