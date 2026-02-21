@@ -131,6 +131,13 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
 
     headers = {}
     for line in lines[1:]:
+        if contains_control_chars(line):
+            raise HttpError(
+                400,
+                "DISALLOW_CONTAILS_CONTROL_CHARCTER",
+                "disallow control charcter in header",
+            )
+
         if ": " in line:
             key, value = line.split(": ", 1)
             headers[key.lower()] = value
@@ -156,6 +163,13 @@ def vetify_request(request: HTTPRequest):
 
     if request.method not in HTTP_METHODS:
         raise HttpError(400, "INVALID_HTTP_METHOD", "Invalid http method")
+
+    if any(contains_control_chars(h) for h in request.headers):
+        raise HttpError(
+            400,
+            "DISALLOW_CONTAILS_CONTROL_CHARCTER",
+            "disallow control charcter in header",
+        )
 
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
@@ -420,3 +434,7 @@ def build_response(
             content_bytes = response.content.encode("utf-8")
 
     return header_blob.encode("utf-8") + content_bytes
+
+
+def contains_control_chars(s: str) -> bool:
+    return any(ord(c) < 32 or ord(c) == 127 for c in s)
