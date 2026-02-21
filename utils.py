@@ -5,6 +5,7 @@ from email.utils import format_datetime
 from enum import Enum, auto
 from io import BytesIO
 from typing import Dict, Union
+from urllib.parse import urlsplit
 
 import zstandard as zstd
 from icecream import ic
@@ -130,6 +131,7 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
         raise HttpError(400, "", "")
 
     method, path, version = parts
+    path = normalize_http_url(path)
 
     headers = {}
     for line in lines[1:]:
@@ -443,3 +445,14 @@ def build_response(
 
 def contains_control_chars(s: str) -> bool:
     return any(ord(c) < 32 or ord(c) == 127 for c in s)
+
+
+def normalize_http_url(url: str) -> str:
+    p = urlsplit(url)
+
+    path = p.path or "/"
+
+    # クエリがあれば付与
+    if p.query:
+        return f"{path}?{p.query}"
+    return path
