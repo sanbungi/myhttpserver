@@ -1,5 +1,7 @@
 import gzip
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import format_datetime
 from enum import Enum, auto
 from io import BytesIO
 from typing import Dict, Union
@@ -396,10 +398,13 @@ def build_response(
     if (100 <= code < 200) or code in {204, 304} or 400 <= code < 600:
         content_length = 0
 
+    http_date = format_datetime(datetime.now(timezone.utc), usegmt=True)
+
     headers = [
         f"HTTP/1.1 {response.status_code} {get_http_reason_phrase(response.status_code)}",
         f"Content-Type: {response.content_type}",
         f"Content-Length: {content_length}",
+        f"Date: {http_date}",
     ]
 
     # accept_encoding = request.headers.get("Accept-Encoding", "")

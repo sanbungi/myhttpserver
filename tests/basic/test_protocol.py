@@ -1,4 +1,5 @@
 """RFC 2616: HTTP/1.1プロトコル仕様のテスト"""
+
 import socket
 
 import pytest
@@ -9,7 +10,7 @@ def test_http_version_in_response(http_socket):
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1" in response or b"HTTP/1.0" in response
 
 
@@ -18,7 +19,7 @@ def test_case_insensitive_headers(http_socket):
     request = b"GET /index.html HTTP/1.1\r\nhOsT: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # Hostヘッダーがあるとみなされるべき
     assert b"HTTP/1.1 200" in response or b"HTTP/1.1 404" in response
 
@@ -28,7 +29,7 @@ def test_multiple_spaces_in_request_line(http_socket):
     request = b"GET  /index.html  HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # 寛容なサーバーは受け入れるかもしれない、厳格なサーバーは400
     assert b"HTTP/1.1" in response
 
@@ -38,16 +39,18 @@ def test_request_without_body(http_socket):
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1" in response
 
 
 def test_request_with_content_length_zero(http_socket):
     """Content-Length: 0のPOSTリクエスト"""
-    request = b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+    request = (
+        b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+    )
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # 405または他のエラー
     assert b"HTTP/1.1" in response
 
@@ -58,14 +61,14 @@ def test_persistent_connection_default(http_socket):
     request1 = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request1)
     response1 = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1" in response1
-    
+
     # 同じソケットで2つ目のリクエスト
     request2 = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request2)
     response2 = http_socket.recv(4096)
-    
+
     assert b"HTTP/1.1" in response2
 
 
@@ -86,7 +89,6 @@ def test_absolute_uri_in_request(server):
     assert b"HTTP/1.1 200" in response
 
 
-@pytest.mark.xfail(reason="Date header not implemented")
 def test_response_has_date_header(http_socket):
     """Section 14.18: レスポンスはDateヘッダーを含むべき"""
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
@@ -102,7 +104,7 @@ def test_chunked_transfer_encoding_not_required(http_socket):
     request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # Content-LengthまたはTransfer-Encodingのいずれか
     assert b"Content-Length:" in response or b"Transfer-Encoding:" in response
 
@@ -112,7 +114,7 @@ def test_100_continue_not_required(http_socket):
     request = b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 10\r\n\r\n"
     http_socket.send(request)
     http_socket.settimeout(2)
-    
+
     try:
         response = http_socket.recv(4096)
         # 100または417または405が返される可能性
@@ -127,7 +129,7 @@ def test_request_target_asterisk_form(http_socket):
     request = b"OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     # 実装していれば200、未実装なら501または400
     assert b"HTTP/1.1" in response
 
@@ -138,5 +140,5 @@ def test_http_1_0_request(http_socket):
     request = b"GET /index.html HTTP/1.0\r\n\r\n"
     http_socket.send(request)
     response = http_socket.recv(4096)
-    
+
     assert b"HTTP/1" in response
