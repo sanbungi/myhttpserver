@@ -2,8 +2,6 @@
 
 import socket
 
-import pytest
-
 
 def test_http_version_in_response(http_socket):
     """レスポンスはHTTP/1.1バージョンを含む"""
@@ -72,18 +70,13 @@ def test_persistent_connection_default(http_socket):
     assert b"HTTP/1.1" in response2
 
 
-@pytest.mark.xfail(reason="Absolute URI in request not implemented")
-def test_absolute_uri_in_request(server):
+def test_absolute_uri_in_request(http_socket, server):
     """Section 5.1.2: 絶対URIをサポート（プロキシ向け）"""
-    s = socket.socket()
-    s.connect(server)
-    s.settimeout(5)  # タイムアウト設定
-
-    # 絶対URI形式
-    request = b"GET http://localhost/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
-    s.send(request)
-    response = s.recv(4096)
-    s.close()
+    # 絶対URI形式: serverフィクスチャからURLを構築
+    absolute_uri = f"{server}/index.html"
+    request = f"GET {absolute_uri} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
+    http_socket.send(request)
+    response = http_socket.recv(4096)
 
     # RFC 2616 §5.1.2: HTTP/1.1サーバーは絶対URIを受け入れなければならない (MUST)
     assert b"HTTP/1.1 200" in response
