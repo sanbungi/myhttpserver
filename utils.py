@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from email.utils import format_datetime
 from enum import Enum, auto
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import Dict, Union
 from urllib.parse import urlsplit
 
@@ -456,3 +457,20 @@ def normalize_http_url(url: str) -> str:
     if p.query:
         return f"{path}?{p.query}"
     return path
+
+
+# routeing順序を考慮し、長い順から順番にマッチさせる。
+def find_best_route(server, request_path_str: str):
+    req_obj = PurePosixPath(request_path_str)
+
+    candidates = []
+    for route in server.routes:
+        route_obj = PurePosixPath(route.path)
+
+        if req_obj.is_relative_to(route_obj):
+            candidates.append(route)
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda r: len(r.path))

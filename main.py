@@ -9,17 +9,20 @@ from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import hcl
 from icecream import ic
 from rich import print
 
 from config import load_config
 from FileCache import FileCache
+from labs.config_model import AppConfig
 from utils import (
     HttpError,
     HTTPRequest,
     HTTPResponse,
     build_response,
     error_response,
+    find_best_route,
     get_content_type,
     get_keep_alive,
     parse_request,
@@ -34,6 +37,10 @@ from utils import (
 )
 
 # 設定をロード
+with open("labs/example.hcl", "r") as fp:
+    raw_obj = hcl.load(fp)
+
+new_config = AppConfig.load(raw_obj)
 config = load_config()
 
 # ロガーの定義
@@ -123,9 +130,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def make_response(request: HTTPRequest) -> HTTPResponse:
+def route_response(request: HTTPRequest) -> HTTPResponse:
 
-    path = Path(request.path)
+    request_path = Path(request.path)
     system_logger.debug(cache.stats())
 
     try:
@@ -133,31 +140,50 @@ def make_response(request: HTTPRequest) -> HTTPResponse:
             ic("OPTONS CALLS")
             return response_204()
 
-        # pathがrootならindexを返す
-        if path == Path("/"):
-            content = cache.read(f"{config.server.webroot}/index.html", mode="r")
-            # ipdb.set_trace()
-            return response_200(content.encode("utf-8"), "text/html; charset=utf-8")
+        server = new_config.servers[0]  # TODO
+        route = find_best_route(server, request_path)
 
-        server_file_path = Path(config.server.webroot) / path.relative_to("/")
-
-        # ディレクトリならその中のindex.htmlを返す
-        if server_file_path.is_dir():
-            return response_301(str(path) + "/index.html")
-
-        if not os.path.exists(server_file_path):
+        if not route:
             return response_404()
 
-        content_type, is_binary = get_content_type(server_file_path)
+        if route.type == "static":
+            if request_path == Path("/"):
+                content = cache.read(f"{server.root}/{route.index[0]}", mode="r")
+                return response_200(
+                    str(content).encode("utf-8"), "text/html charset=utf-8"
+                )
 
-        if is_binary:
-            content = cache.read(server_file_path, mode="rb")
+            server_file_path = Path(server.root) / request_path.relative_to("/")
+            ic(server_file_path)
+
+            # ディレクトリならその中のindex.htmlを返す
+            if server_file_path.is_dir():
+                return response_301(str(path) + "/index.html")
+
+            if not os.path.exists(server_file_path):
+                return response_404()
+
+            content_type, is_binary = get_content_type(server_file_path)
+
+            if is_binary:
+                content = cache.read(server_file_path, mode="rb")
+            else:
+                content = cache.read(server_file_path, mode="r")
+                # 日本語等だとカウントがずれるので先にエンコード
+                content = content.encode("utf-8")
+
+            return response_200(content, content_type)
+        # リバースプロキシ
+        elif route.type == "proxy":
+            pass
+        # 固定値のレスポンスを貸す場合（Configにて指定)
+        elif route.type == "raw":
+            pass
+        # 301リダイレクトの指示（Configにも未実装）
+        elif route.type == "redirect":
+            pass
         else:
-            content = cache.read(server_file_path, mode="r")
-            # 日本語等だとカウントがずれるので先にエンコード
-            content = content.encode("utf-8")
-
-        return response_200(content, content_type)
+            return response_500()
 
     except PermissionError as e:
         system_logger.error(f"PermissionError {e}")
@@ -187,7 +213,7 @@ def handle_client(client_sock, addr):
 
                 http_logger.debug(f"Received request: {request}")
 
-                response = make_response(request)
+                response = route_response(request)
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
@@ -248,7 +274,9 @@ def server():
             protocol = "HTTPS" if ssl_context else "HTTP"
             system_logger.info(f"Start {protocol} server at port {port}")
 
-            with ThreadPoolExecutor(max_workers=config.server.max_workers) as executor:
+            with ThreadPoolExecutor(
+                max_workers=new_config.global_settings.worker_processes
+            ) as executor:
                 while True:
                     client_sock, addr = server_sock.accept()
 
@@ -271,6 +299,8 @@ def server():
                     )
 
     threads = []
+
+    # TODO newconfig.servers の分だけ生成する。
 
     if config.server.use_ssl:
         # HTTPS Server

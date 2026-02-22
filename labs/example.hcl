@@ -14,7 +14,7 @@ global {
 server "main-server" {
   host = "example.com"
   port = 80
-  root = "./public_html"
+  root = "./html"
 
   tls {
     enabled = true
