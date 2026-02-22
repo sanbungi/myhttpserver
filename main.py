@@ -178,7 +178,11 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
             pass
         # 固定値のレスポンスを貸す場合（Configにて指定)
         elif route.type == "raw":
-            pass
+            if route.respond:
+                ic(route)
+                return error_response(route.respond.status, route.respond.body)
+            return response_500()
+
         # 301リダイレクトの指示（Configにも未実装）
         elif route.type == "redirect":
             pass
