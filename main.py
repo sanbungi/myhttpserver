@@ -142,11 +142,15 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
 
         server = new_config.servers[0]  # TODO
         route = find_best_route(server, request_path)
+        ic(route)
 
         if not route:
             return response_404()
 
         if route.type == "static":
+            if route.security:
+                ic(route.security)
+
             if request_path == Path("/"):
                 content = cache.read(f"{server.root}/{route.index[0]}", mode="r")
                 return response_200(
@@ -239,11 +243,11 @@ def handle_client(client_sock, addr):
         request = None
         while True:
             try:
-                header, body = receive_safe_request(client_sock)
+                header, body = receive_safe_request(client_sock, addr)
                 if header is None:  # headerがNoneなら終了とみなす
                     break
 
-                request = parse_request(header, body)
+                request = parse_request(header, body, addr)
                 vetify_request(request)
 
                 response = route_response(request)
@@ -261,7 +265,6 @@ def handle_client(client_sock, addr):
                 traceback.print_exc()
                 response = response_500()
 
-            ic(response)
             client_sock.sendall(build_response(response, request))
 
             keep_alive = get_keep_alive(request)

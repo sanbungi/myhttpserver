@@ -13,16 +13,17 @@ from icecream import ic
 
 
 class HTTPRequest:
-    def __init__(self, method, path, version, headers, body):
+    def __init__(self, method, path, version, headers, body, addr):
         self.method = method
         self.path = path
         self.version = version
         self.headers = headers
         self.body = body
+        self.remote_addr = addr
 
     def __repr__(self):
         headers_str = "\n".join(f"    {k}: {v}" for k, v in self.headers.items())
-        return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n)"
+        return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n   remote_addr={self.remote_addr}\n"
 
 
 @dataclass
@@ -78,7 +79,10 @@ HTTP_METHODS = {
 
 
 # ヘッダーとボディを分けて解析
-def receive_safe_request(client_sock):
+def receive_safe_request(client_sock, addr):
+
+    # TODO globalで禁止なipなら拒否
+
     buffer = b""
     # ヘッダー
     while b"\r\n\r\n" not in buffer:
@@ -120,7 +124,7 @@ def receive_safe_request(client_sock):
     return header_text, body
 
 
-def parse_request(header: str, body: bytes) -> HTTPRequest:
+def parse_request(header: str, body: bytes, addr) -> HTTPRequest:
     lines = header.strip().split("\r\n")
 
     request_line = lines[0]
@@ -147,7 +151,7 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
             key, value = line.split(": ", 1)
             headers[key.lower()] = value
 
-    return HTTPRequest(method, path, version, headers, body)
+    return HTTPRequest(method, path, version, headers, body, addr)
 
 
 def vetify_request(request: HTTPRequest):
