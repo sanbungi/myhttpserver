@@ -22,19 +22,10 @@ from utils import (
     HTTPRequest,
     HTTPResponse,
     build_response,
-    error_response,
     find_best_route,
     get_content_type,
-    get_keep_alive,
     parse_request,
     receive_safe_request,
-    response_200,
-    response_204,
-    response_301,
-    response_400,
-    response_403,
-    response_404,
-    response_500,
     response_any,
     vetify_request,
 )
@@ -140,14 +131,14 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
     try:
         if request.method == "OPTIONS":
             ic("OPTONS CALLS")
-            return response_204()
+            return response_any(204, header={"Allow": "GET, HEAD, OPTIONS"})
 
         server = new_config.servers[0]  # TODO
         route = find_best_route(server, request_path)
         ic(route)
 
         if not route:
-            return response_404()
+            return response_any(404)
 
         if route.type == "static":
             if route.security:
@@ -158,12 +149,14 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                     pass  # →含まれているのでOK
                 else:
                     # 400を返して禁止を表現
-                    return response_400()
+                    return response_any(400)
 
             if request_path == Path("/"):
                 content = cache.read(f"{server.root}/{route.index[0]}", mode="r")
-                return response_200(
-                    str(content).encode("utf-8"), "text/html charset=utf-8"
+                return response_any(
+                    200,
+                    "text/html charset=utf-8",
+                    str(content).encode("utf-8"),
                 )
 
             server_file_path = Path(server.root) / request_path.relative_to("/")
@@ -171,10 +164,10 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
 
             # ディレクトリならその中のindex.htmlを返す
             if server_file_path.is_dir():
-                return response_301(str(path) + "/index.html")
+                return response_any(code=301, header={"Location": "index.html"})
 
             if not os.path.exists(server_file_path):
-                return response_404()
+                return response_any(404)
 
             content_type, is_binary = get_content_type(server_file_path)
 
@@ -185,7 +178,7 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                 # 日本語等だとカウントがずれるので先にエンコード
                 content = content.encode("utf-8")
 
-            return response_200(content, content_type)
+            return response_any(200, content_type, content)
         # リバースプロキシ
         elif route.type == "proxy":
             send_header = dict(request.headers)
@@ -219,7 +212,7 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
             if route.respond:
                 ic(route)
                 return error_response(route.respond.status, route.respond.body)
-            return response_500()
+            return response_any(500)
 
         # 301リダイレクトの指示（Configにも未実装）
         elif route.type == "redirect":
@@ -231,16 +224,16 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                 code=route.redirect.code, header={"Location": route.redirect.url}
             )
         else:
-            return response_500()
+            return response_any(500)
 
     except PermissionError as e:
         system_logger.error(f"PermissionError {e}")
         traceback.print_exc()
-        return response_403()
+        return response_any(403)
     except Exception as e:
         system_logger.error(f"Failed Make Response {request} {e}")
         traceback.print_exc()
-        return response_500()
+        return response_any(500)
 
 
 def handle_client(client_sock, addr):
@@ -260,27 +253,36 @@ def handle_client(client_sock, addr):
                 vetify_request(request)
 
                 response = route_response(request)
+                # ic(response)
 
             except socket.timeout:
                 system_logger.debug(f"Connection with {addr} timed out.")
                 client_sock.close()
                 return
             except HttpError as e:
-                response = error_response(e.status, e.message)
+                if e.status == 405:
+                    response = response_any(
+                        code=e.status, header={"Allow": "GET, HEAD, OPTIONS"}
+                    )  # HACK Configから参照
+                    # ipdb.set_trace()
+                else:
+                    response = response_any(e.status)
                 traceback.print_exc()
 
             except Exception as e:
                 system_logger.error(f"Error keeping connection with {addr}: {e}")
                 traceback.print_exc()
-                response = response_500()
+                response = response_any(500)
 
-            client_sock.sendall(build_response(response, request))
+            final_response, keep_alive = build_response(response, request)
+            client_sock.sendall(final_response)
 
-            keep_alive = get_keep_alive(request)
             ic(keep_alive)
-            if not keep_alive:
-                client_sock.close()
-                return
+            if keep_alive:
+                continue
+
+            client_sock.close()
+            return
 
     except ssl.SSLError as e:
         system_logger.error(f"SSL error with client {addr}: {e}")

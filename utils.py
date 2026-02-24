@@ -1,7 +1,7 @@
 import gzip
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from email.utils import format_datetime
+from email.utils import format_datetime, formatdate
 from enum import Enum, auto
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -260,11 +260,17 @@ def get_keep_alive(request: HTTPRequest) -> bool:
 
 
 def response_any(
-    code: int, content_type: str = "text/plain; charset=utf-8", contents="", header=None
+    code: int,
+    content_type: str = "text/plain; charset=utf-8",
+    contents="",
+    header=None,
 ):
     if contents == "":
         reason = get_http_reason_phrase(code)
-        contents = f"{code} {reason}"
+        # エラー番台
+        if 400 <= code < 600:
+            contents = get_error_page(code, reason)
+            content_type = "text/html"
 
     if header:
         return HTTPResponse(code, content_type, contents, header)
@@ -274,115 +280,6 @@ def response_any(
         content_type,
         contents,
     )
-
-
-def response_301(location: str) -> HTTPResponse:
-    return HTTPResponse(
-        301,
-        "text/plain; charset=utf-8",
-        "301 Moved Permanently",
-        {"Location": location},
-    )
-
-
-def response_200(content: bytes, content_type: str) -> HTTPResponse:
-    return HTTPResponse(
-        200,
-        content_type,
-        content,
-    )
-
-
-def response_204() -> HTTPResponse:
-    return HTTPResponse(
-        204,
-        "text/plain; charset=utf-8",
-        "",
-        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
-    )
-
-
-def response_400() -> HTTPResponse:
-    return HTTPResponse(
-        400,
-        "text/plain; charset=utf-8",
-        "400",
-    )
-
-
-def response_404() -> HTTPResponse:
-    return HTTPResponse(
-        404,
-        "text/plain; charset=utf-8",
-        "404 Not Found",
-    )
-
-
-def response_413() -> HTTPResponse:
-    return HTTPResponse(
-        413,
-        "text/plain; charset=utf-8",
-        "413 Payload Too Large",
-    )
-
-
-def response_414() -> HTTPResponse:
-    return HTTPResponse(
-        414,
-        "text/plain; charset=utf-8",
-        "414 URL Too Long",
-    )
-
-
-def response_431() -> HTTPResponse:
-    return HTTPResponse(
-        431,
-        "text/plain; charset=utf-8",
-        "431 Request Header Fields Too Large",
-    )
-
-
-def response_500() -> HTTPResponse:
-    return HTTPResponse(
-        500,
-        "text/plain; charset=utf-8",
-        "500 Internal Server Error",
-    )
-
-
-def response_403() -> HTTPResponse:
-    return HTTPResponse(
-        403,
-        "text/plain; charset=utf-8",
-        "403 Forbidden",
-    )
-
-
-def response_405() -> HTTPResponse:
-    return HTTPResponse(
-        405,
-        "text/plain; charset=utf-8",
-        "405 Method Not Allowed",
-        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
-    )
-
-
-def error_response(status: int, msg: str):
-    if status == 400:
-        return response_400()
-    elif status == 405:
-        return response_405()
-    elif status == 404:
-        return response_404()
-    elif status == 413:
-        return response_413()
-    elif status == 414:
-        return response_414()
-    elif status == 431:
-        return response_431()
-    else:
-        ic("FALL BACK ERROR 500")
-        return response_500()
 
 
 # リストから優先される圧縮方式を取得
@@ -443,6 +340,8 @@ def build_response(
         headers.append("Connection: keep-alive")
         headers.append("Keep-Alive: timeout=61")
 
+    ic(keep_alive)
+
     headers.append("Server: MyHTTPServer/0.1")
 
     # encoding = get_preferred_encoding(accept_encoding, ["gzip"])
@@ -462,7 +361,7 @@ def build_response(
         else:
             content_bytes = response.content.encode("utf-8")
 
-    return header_blob.encode("utf-8") + content_bytes
+    return header_blob.encode("utf-8") + content_bytes, keep_alive
 
 
 def contains_control_chars(s: str) -> bool:
@@ -495,10 +394,6 @@ def find_best_route(server, request_path_str: str):
         return None
 
     return max(candidates, key=lambda r: len(r.path))
-
-
-import datetime
-from email.utils import formatdate
 
 
 # HTTPエラーページをテンプレートから生成する
