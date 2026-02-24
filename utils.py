@@ -115,7 +115,7 @@ def receive_safe_request(client_sock):
             break
         body += data
 
-    print(header_text, body)
+    ic(header_text, body)
 
     return header_text, body
 
@@ -178,7 +178,7 @@ def vetify_request(request: HTTPRequest):
 
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
-        print("NOT ALLOW !!!")
+        ic("NOT ALLOW !!!")
         raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
 
 
@@ -377,7 +377,7 @@ def error_response(status: int, msg: str):
     elif status == 431:
         return response_431()
     else:
-        print("FALL BACK ERROR 500")
+        ic("FALL BACK ERROR 500")
         return response_500()
 
 

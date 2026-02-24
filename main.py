@@ -12,7 +12,6 @@ from pathlib import Path
 import hcl
 import requests
 from icecream import ic
-from rich import print
 
 from config import load_config
 from FileCache import FileCache
@@ -135,7 +134,6 @@ def parse_args():
 def route_response(request: HTTPRequest) -> HTTPResponse:
 
     request_path = Path(request.path)
-    system_logger.debug(cache.stats())
 
     try:
         if request.method == "OPTIONS":
@@ -199,10 +197,10 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                     resp.headers,
                 )
             except requests.RequestException as e:
-                print(f"Upstream error: {e}")
+                ic(f"Upstream error: {e}")
                 traceback.print_exc()
                 return None
-            pass
+
         # 固定値のレスポンスを貸す場合（Configにて指定)
         elif route.type == "raw":
             if route.respond:
@@ -248,8 +246,6 @@ def handle_client(client_sock, addr):
                 request = parse_request(header, body)
                 vetify_request(request)
 
-                http_logger.debug(f"Received request: {request}")
-
                 response = route_response(request)
 
             except socket.timeout:
@@ -265,7 +261,7 @@ def handle_client(client_sock, addr):
                 traceback.print_exc()
                 response = response_500()
 
-            print(response)
+            ic(response)
             client_sock.sendall(build_response(response, request))
 
             keep_alive = get_keep_alive(request)
