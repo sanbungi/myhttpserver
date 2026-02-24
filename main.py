@@ -1,4 +1,5 @@
 import argparse
+import ipaddress
 import logging
 import os
 import socket
@@ -30,6 +31,7 @@ from utils import (
     response_200,
     response_204,
     response_301,
+    response_400,
     response_403,
     response_404,
     response_500,
@@ -149,7 +151,14 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
 
         if route.type == "static":
             if route.security:
-                ic(route.security)
+                ip = ipaddress.ip_address(request.remote_addr)
+                network = ipaddress.ip_network(route.security.ip_allow[0], strict=False)
+                if ip in network:
+                    ic("Access OK: {ip} in {network}")
+                    pass  # →含まれているのでOK
+                else:
+                    # 400を返して禁止を表現
+                    return response_400()
 
             if request_path == Path("/"):
                 content = cache.read(f"{server.root}/{route.index[0]}", mode="r")
@@ -314,8 +323,8 @@ def server():
                 max_workers=new_config.global_settings.worker_processes
             ) as executor:
                 while True:
-                    client_sock, addr = server_sock.accept()
-
+                    client_sock, client_ip_info = server_sock.accept()
+                    address = client_ip_info[0]  # 0→アドレス 1→ポート
                     if ssl_context:
                         try:
                             client_sock = ssl_context.wrap_socket(
@@ -323,7 +332,7 @@ def server():
                             )
                         except ssl.SSLError as e:
                             system_logger.error(
-                                f"SSL handshake failed with {addr}: {e}"
+                                f"SSL handshake failed with {address}: {e}"
                             )
                             client_sock.close()
                             continue
@@ -331,7 +340,7 @@ def server():
                     executor.submit(
                         handle_client,
                         client_sock,
-                        addr,
+                        address,
                     )
 
     threads = []
