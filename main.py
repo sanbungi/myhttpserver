@@ -10,6 +10,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import hcl
+import requests
 from icecream import ic
 from rich import print
 
@@ -33,6 +34,7 @@ from utils import (
     response_403,
     response_404,
     response_500,
+    response_any,
     vetify_request,
 )
 
@@ -175,6 +177,31 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
             return response_200(content, content_type)
         # リバースプロキシ
         elif route.type == "proxy":
+            send_header = dict(request.headers)
+            send_header.pop("host", None)
+            send_header.pop("Host", None)
+            try:
+                resp = requests.request(
+                    method=request.method,
+                    url=str(f"http://localhost:1234/{request_path}"),
+                    headers=send_header,
+                    data=request.body,  # ボディがある場合
+                    timeout=10,  # タイムアウト設定は必須
+                )
+
+                ic(resp.status_code)
+                ic(dict(resp.headers))
+                ic(resp.text)
+                return response_any(
+                    resp.status_code,
+                    resp.headers["Content-Type"],
+                    resp.content,
+                    resp.headers,
+                )
+            except requests.RequestException as e:
+                print(f"Upstream error: {e}")
+                traceback.print_exc()
+                return None
             pass
         # 固定値のレスポンスを貸す場合（Configにて指定)
         elif route.type == "raw":

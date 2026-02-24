@@ -255,6 +255,17 @@ def get_keep_alive(request: HTTPRequest) -> bool:
         return True
 
 
+def response_any(code: int, content_type: str, contents, header=None):
+    if header:
+        return HTTPResponse(code, content_type, contents, header)
+
+    return HTTPResponse(
+        code,
+        content_type,
+        contents,
+    )
+
+
 def response_301(location: str) -> HTTPResponse:
     return HTTPResponse(
         301,
