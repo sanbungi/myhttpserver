@@ -495,3 +495,33 @@ def find_best_route(server, request_path_str: str):
         return None
 
     return max(candidates, key=lambda r: len(r.path))
+
+
+import datetime
+from email.utils import formatdate
+
+
+# HTTPエラーページをテンプレートから生成する
+def get_error_page(
+    code,
+    message,
+    template_path="./template/error_page.html.template",
+    server_name="MyServer/1.0",
+):
+    current_time = formatdate(timeval=None, localtime=False, usegmt=True)
+
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # 文字列置換にて実装
+        html_content = html_content.replace("{{code}}", str(code))
+        html_content = html_content.replace("{{message}}", str(message))
+        html_content = html_content.replace("{{server}}", str(server_name))
+        html_content = html_content.replace("{{time}}", current_time)
+
+        return html_content
+
+    # フォールバック用
+    except FileNotFoundError:
+        return f"<html><body><h1>{code} {message}</h1><p>Error loading template.</p></body></html>"
