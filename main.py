@@ -212,7 +212,13 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
 
         # 301リダイレクトの指示（Configにも未実装）
         elif route.type == "redirect":
-            pass
+            ic("REDIRECT")
+            ic(route.redirect)
+
+            # return response_301(route.redirect.url)
+            return response_any(
+                code=route.redirect.code, header={"Location": route.redirect.url}
+            )
         else:
             return response_500()
 

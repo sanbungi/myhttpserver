@@ -91,14 +91,27 @@ class SecurityConfig:
 
 
 @dataclass
+class RedirectConfig:
+    url: str
+    code: int
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "RedirectConfig":
+        if not data:
+            return None
+        return cls(**data)
+
+
+@dataclass
 class RouteConfig:
     path: str  # URLパス (辞書のキーから取得)
-    type: str  # static, proxy, raw, etc
+    type: str
     index: List[str] = field(default_factory=list)
     headers: Optional[HeadersConfig] = None
     backend: Optional[BackendConfig] = None
     respond: Optional[RespondConfig] = None
     security: Optional[SecurityConfig] = None
+    redirect: Optional[RedirectConfig] = None
 
     @classmethod
     def from_dict(cls, path: str, data: Dict) -> "RouteConfig":
@@ -110,6 +123,7 @@ class RouteConfig:
             backend=BackendConfig.from_dict(data.get("backend", {})),
             respond=RespondConfig.from_dict(data.get("respond", {})),
             security=SecurityConfig.from_dict(data.get("security", {})),
+            redirect=RedirectConfig.from_dict(data.get("redirect", {})),
         )
 
 

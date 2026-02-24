@@ -255,7 +255,13 @@ def get_keep_alive(request: HTTPRequest) -> bool:
         return True
 
 
-def response_any(code: int, content_type: str, contents, header=None):
+def response_any(
+    code: int, content_type: str = "text/plain; charset=utf-8", contents="", header=None
+):
+    if contents == "":
+        reason = get_http_reason_phrase(code)
+        contents = f"{code} {reason}"
+
     if header:
         return HTTPResponse(code, content_type, contents, header)
 

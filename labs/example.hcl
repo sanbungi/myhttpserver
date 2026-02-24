@@ -73,4 +73,12 @@ server "main-server" {
       }
     }
   }
+  route "/old" {
+    type = "redirect"
+    
+    redirect {
+      url  = "/hello.html"
+      code = 302
+    }
+  }
 }
