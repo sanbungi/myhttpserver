@@ -704,7 +704,7 @@ class TestBuildResponse:
     def test_301_has_location(self):
         """301レスポンスにLocationヘッダー"""
         req = self._make_get_request()
-        resp = response_any(300, "/new")
+        resp = response_any(301, header={"Location": "/new"})
         raw, _ = build_response(resp, req)
         assert b"Location: /new" in raw
 
