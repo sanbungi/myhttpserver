@@ -208,6 +208,7 @@ def get_http_reason_phrase(status_code):
         403: "Forbidden",
         404: "Not Found",
         405: "Method Not Allowed",
+        413: "Payload Too Large",
         429: "Too Many Requests",
         # 5xx
         500: "Internal Server Error",
@@ -261,7 +262,7 @@ def get_keep_alive(request: HTTPRequest) -> bool:
 
 def response_any(
     code: int,
-    content_type: str = "text/plain; charset=utf-8",
+    content_type: str = "text/plain",
     contents="",
     header=None,
 ):
