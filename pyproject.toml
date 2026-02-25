@@ -4,6 +4,7 @@ version = "0.0.1"
 description = ""
 dependencies = [
     "pyhcl>=0.4.5",
+    "xxhash>=3.6.0",
     "zstandard>=0.25.0",
 ]
 

@@ -1,4 +1,6 @@
 import gzip
+import os
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import format_datetime, formatdate
@@ -8,6 +10,7 @@ from pathlib import PurePosixPath
 from typing import Dict, Union
 from urllib.parse import urlsplit
 
+import xxhash
 import zstandard as zstd
 from icecream import ic
 
@@ -299,7 +302,8 @@ def build_response(
         f"Date: {http_date}",
     ]
 
-    # accept_encoding = request.headers.get("Accept-Encoding", "")
+    accept_encoding = request.headers.get("accept-encoding", "")
+    ic(accept_encoding)
     # レスポンスオブジェクトに含まれる追加ヘッダー
     for key, value in response.headers.items():
         headers.append(f"{key}: {value}")
@@ -315,14 +319,12 @@ def build_response(
 
     headers.append("Server: MyHTTPServer/0.1")
 
-    # encoding = get_preferred_encoding(accept_encoding, ["gzip"])
-    encoding = False
+    encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+    # encoding = False
     if encoding:
         headers.append(f"Content-Encoding: {encoding}")
         response.content = compress_content(response.content, encoding)
         headers[2] = f"Content-Length: {len(response.content)}"
-
-    header_blob = "\r\n".join(headers) + "\r\n\r\n"
 
     content_bytes = b""
     if request.method == "GET":
@@ -332,6 +334,14 @@ def build_response(
         else:
             content_bytes = response.content.encode("utf-8")
 
+        # etag生成
+        etag = generate_content_etag(content_bytes)
+        if encoding:
+            headers.append(f'ETag: "{etag}-{encoding}"')
+        else:
+            headers.append(f'ETag: "{etag}"')
+
+    header_blob = "\r\n".join(headers) + "\r\n\r\n"
     return header_blob.encode("utf-8") + content_bytes, keep_alive
 
 
@@ -391,3 +401,24 @@ def get_error_page(
     # フォールバック用
     except FileNotFoundError:
         return f"<html><body><h1>{code} {message}</h1><p>Error loading template.</p></body></html>"
+
+
+def generage_file_etag(path):
+    try:
+        stat = os.stat(path)
+
+        mtime = int(stat.st_mtime_ns)
+        size = stat.st_size
+
+        mtime_hex = hex(mtime)[2:]
+        size_hex = hex(size)[2:]
+
+        return f"{mtime_hex}-{size_hex}"
+    except (FileNotFoundError, PermissionError):
+        traceback.print_exc()
+        return None
+
+
+def generate_content_etag(content: bytes):
+    content_hash = xxhash.xxh64(content).hexdigest()
+    return f"{content_hash}"
