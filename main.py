@@ -15,8 +15,8 @@ import requests
 from icecream import ic
 
 from config import load_config
+from config_model import AppConfig
 from FileCache import FileCache
-from labs.config_model import AppConfig
 from utils import (
     HttpError,
     HTTPRequest,
@@ -31,7 +31,7 @@ from utils import (
 )
 
 # 設定をロード
-with open("labs/example.hcl", "r") as fp:
+with open("config/example.hcl", "r") as fp:
     raw_obj = hcl.load(fp)
 
 new_config = AppConfig.load(raw_obj)

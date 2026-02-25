@@ -1,10 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-# ==========================================
-# 共通部品 (Headers, Auth, etc)
-# ==========================================
-
 
 @dataclass
 class HeadersConfig:
@@ -43,11 +39,6 @@ class TlsConfig:
         return cls(**data) if data else cls()
 
 
-# ==========================================
-# Route 関連 (Backend, Respond, Security)
-# ==========================================
-
-
 @dataclass
 class BackendConfig:
     upstream: str
@@ -81,7 +72,7 @@ class RespondConfig:
 class SecurityConfig:
     deny_all: bool = False
     ip_allow: List[str] = field(default_factory=list)
-    # Basic認証などがあればここに追加
+    # HACK Basic認証なども追加する
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SecurityConfig":
@@ -104,7 +95,7 @@ class RedirectConfig:
 
 @dataclass
 class RouteConfig:
-    path: str  # URLパス (辞書のキーから取得)
+    path: str
     type: str
     index: List[str] = field(default_factory=list)
     headers: Optional[HeadersConfig] = None
@@ -134,7 +125,7 @@ class RouteConfig:
 
 @dataclass
 class ServerConfig:
-    name: str  # サーバー名 (辞書のキーから取得)
+    name: str
     host: str
     port: int
     root: Optional[str] = None
@@ -144,7 +135,6 @@ class ServerConfig:
 
     @classmethod
     def from_dict(cls, name: str, data: Dict) -> "ServerConfig":
-        # Routeのパース処理 (ここが重要: pyhclは [{path: data}, ...] というリストを返す)
         routes = []
         raw_routes = data.get("route", [])
 
@@ -185,11 +175,6 @@ class GlobalConfig:
         )
 
 
-# ==========================================
-# Root Config (全体のエントリーポイント)
-# ==========================================
-
-
 @dataclass
 class AppConfig:
     global_settings: GlobalConfig
@@ -197,11 +182,9 @@ class AppConfig:
 
     @classmethod
     def load(cls, raw_hcl: Dict) -> "AppConfig":
-        # Globalセクションの読み込み
         g_config = GlobalConfig.from_dict(raw_hcl.get("global", {}))
 
         # Serversセクションの読み込み
-        # pyhclは server = {'name': {...}} という辞書を返す
         servers = []
         raw_servers = raw_hcl.get("server", {})
         for name, server_data in raw_servers.items():
