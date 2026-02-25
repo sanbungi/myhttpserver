@@ -5,6 +5,7 @@ build_response、get_content_type、compress_content、
 get_keep_alive、get_preferred_encoding、レスポンスヘルパーの
 ユニットテストを行う。
 """
+
 import gzip
 import sys
 from pathlib import Path
@@ -17,41 +18,33 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils import (
+    HttpError,
     HTTPRequest,
     HTTPResponse,
-    HttpError,
     build_response,
     compress_content,
-    error_response,
     get_content_type,
     get_http_reason_phrase,
     get_keep_alive,
     get_preferred_encoding,
     parse_request,
-    response_200,
-    response_204,
-    response_301,
-    response_400,
-    response_403,
-    response_404,
-    response_405,
-    response_413,
-    response_431,
-    response_500,
+    response_any,
     vetify_request,
 )
-
 
 # =============================================================================
 # HTTPRequest データクラス
 # =============================================================================
+
 
 class TestHTTPRequest:
     """HTTPRequestクラスのテスト"""
 
     def test_basic_construction(self):
         """基本的なHTTPRequestオブジェクト生成"""
-        req = HTTPRequest("GET", "/index.html", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "GET", "/index.html", "HTTP/1.1", {"host": "localhost"}, b"", ""
+        )
         assert req.method == "GET"
         assert req.path == "/index.html"
         assert req.version == "HTTP/1.1"
@@ -61,12 +54,14 @@ class TestHTTPRequest:
     def test_with_body(self):
         """ボディ付きリクエスト"""
         body = b"key=value"
-        req = HTTPRequest("POST", "/submit", "HTTP/1.1", {"host": "localhost"}, body)
+        req = HTTPRequest(
+            "POST", "/submit", "HTTP/1.1", {"host": "localhost"}, body, ""
+        )
         assert req.body == b"key=value"
 
     def test_repr(self):
         """__repr__の出力形式"""
-        req = HTTPRequest("GET", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest("GET", "/", "HTTP/1.1", {"host": "localhost"}, b"", "")
         repr_str = repr(req)
         assert "HTTPRequest" in repr_str
         assert "GET" in repr_str
@@ -74,13 +69,14 @@ class TestHTTPRequest:
 
     def test_empty_headers(self):
         """空ヘッダーのリクエスト"""
-        req = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"")
+        req = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"", "")
         assert req.headers == {}
 
 
 # =============================================================================
 # HTTPResponse データクラス
 # =============================================================================
+
 
 class TestHTTPResponse:
     """HTTPResponseクラスのテスト"""
@@ -128,13 +124,14 @@ class TestHTTPResponse:
 # parse_request
 # =============================================================================
 
+
 class TestParseRequest:
     """parse_request関数のテスト"""
 
     def test_simple_get(self):
         """シンプルなGETリクエストのパース"""
         header = "GET /index.html HTTP/1.1\r\nHost: localhost"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.method == "GET"
         assert req.path == "/index.html"
         assert req.version == "HTTP/1.1"
@@ -148,7 +145,7 @@ class TestParseRequest:
             "Accept: text/html\r\n"
             "User-Agent: TestBot"
         )
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.headers["host"] == "localhost"
         assert req.headers["accept"] == "text/html"
         assert req.headers["user-agent"] == "TestBot"
@@ -156,44 +153,44 @@ class TestParseRequest:
     def test_head_method(self):
         """HEADメソッドのパース"""
         header = "HEAD /index.html HTTP/1.1\r\nHost: localhost"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.method == "HEAD"
 
     def test_options_method(self):
         """OPTIONSメソッドのパース"""
         header = "OPTIONS * HTTP/1.1\r\nHost: localhost"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.method == "OPTIONS"
         assert req.path == "*"
 
     def test_with_body(self):
         """ボディ付きリクエストのパース"""
         header = "POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5"
-        req = parse_request(header, b"hello")
+        req = parse_request(header, b"hello", "")
         assert req.body == b"hello"
 
     def test_headers_case_insensitive(self):
         """ヘッダー名は小文字化される"""
         header = "GET / HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/html"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert "content-type" in req.headers
 
     def test_http10_version(self):
         """HTTP/1.0バージョンのパース"""
         header = "GET / HTTP/1.0\r\nHost: localhost"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.version == "HTTP/1.0"
 
     def test_invalid_request_line_raises(self):
         """不正なリクエストライン → HttpError"""
         header = "INVALID\r\nHost: localhost"
         with pytest.raises(HttpError):
-            parse_request(header, b"")
+            parse_request(header, b"", "")
 
     def test_path_with_query_string(self):
         """クエリ文字列付きパスのパース"""
         header = "GET /search?q=hello HTTP/1.1\r\nHost: localhost"
-        req = parse_request(header, b"")
+        req = parse_request(header, b"", "")
         assert req.path == "/search?q=hello"
 
 
@@ -201,55 +198,70 @@ class TestParseRequest:
 # vetify_request
 # =============================================================================
 
+
 class TestVetifyRequest:
     """vetify_request関数のテスト"""
 
     def test_valid_get_request(self):
         """有効なGETリクエストは例外なし"""
-        req = HTTPRequest("GET", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "GET", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         vetify_request(req)  # 例外が出なければOK
 
     def test_valid_head_request(self):
         """有効なHEADリクエスト"""
-        req = HTTPRequest("HEAD", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "HEAD", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         vetify_request(req)
 
     def test_valid_options_request(self):
         """有効なOPTIONSリクエスト"""
-        req = HTTPRequest("OPTIONS", "*", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "OPTIONS", "*", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         vetify_request(req)
 
     def test_missing_host_raises_400(self):
         """Hostヘッダーがない場合は400"""
-        req = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"")
+        req = HTTPRequest("GET", "/", "HTTP/1.1", {}, b"", "127.0.0.1")
         with pytest.raises(HttpError) as exc_info:
             vetify_request(req)
         assert exc_info.value.status == 400
 
     def test_post_method_raises_405(self):
         """POSTメソッドは405"""
-        req = HTTPRequest("POST", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "POST", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         with pytest.raises(HttpError) as exc_info:
             vetify_request(req)
         assert exc_info.value.status == 405
 
     def test_put_method_raises_405(self):
         """PUTメソッドは405"""
-        req = HTTPRequest("PUT", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "PUT", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         with pytest.raises(HttpError) as exc_info:
             vetify_request(req)
         assert exc_info.value.status == 405
 
     def test_delete_method_raises_405(self):
         """DELETEメソッドは405"""
-        req = HTTPRequest("DELETE", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "DELETE", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         with pytest.raises(HttpError) as exc_info:
             vetify_request(req)
         assert exc_info.value.status == 405
 
     def test_patch_method_raises_405(self):
         """PATCHメソッドは405"""
-        req = HTTPRequest("PATCH", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest(
+            "PATCH", "/", "HTTP/1.1", {"host": "localhost"}, b"", "127.0.0.1"
+        )
         with pytest.raises(HttpError) as exc_info:
             vetify_request(req)
         assert exc_info.value.status == 405
@@ -258,6 +270,7 @@ class TestVetifyRequest:
 # =============================================================================
 # get_content_type
 # =============================================================================
+
 
 class TestGetContentType:
     """get_content_type関数のテスト"""
@@ -356,48 +369,65 @@ class TestGetContentType:
 # get_keep_alive
 # =============================================================================
 
+
 class TestGetKeepAlive:
     """get_keep_alive関数のテスト"""
 
     def test_http11_default_keep_alive(self):
         """HTTP/1.1のデフォルトはkeep-alive"""
-        req = HTTPRequest("GET", "/", "HTTP/1.1", {"host": "localhost"}, b"")
+        req = HTTPRequest("GET", "/", "HTTP/1.1", {"host": "localhost"}, b"", "")
         assert get_keep_alive(req) is True
 
     def test_http11_connection_close(self):
         """HTTP/1.1 + Connection: close"""
         req = HTTPRequest(
-            "GET", "/", "HTTP/1.1",
-            {"host": "localhost", "connection": "close"}, b""
+            "GET",
+            "/",
+            "HTTP/1.1",
+            {"host": "localhost", "connection": "close"},
+            b"",
+            "",
         )
         assert get_keep_alive(req) is False
 
     def test_http10_default_close(self):
         """HTTP/1.0のデフォルトはclose"""
-        req = HTTPRequest("GET", "/", "HTTP/1.0", {"host": "localhost"}, b"")
+        req = HTTPRequest("GET", "/", "HTTP/1.0", {"host": "localhost"}, b"", "")
         assert get_keep_alive(req) is False
 
     def test_http10_keep_alive_explicit(self):
         """HTTP/1.0 + Connection: keep-alive"""
         req = HTTPRequest(
-            "GET", "/", "HTTP/1.0",
-            {"host": "localhost", "connection": "keep-alive"}, b""
+            "GET",
+            "/",
+            "HTTP/1.0",
+            {"host": "localhost", "connection": "keep-alive"},
+            b"",
+            "",
         )
         assert get_keep_alive(req) is True
 
     def test_http11_connection_keep_alive(self):
         """HTTP/1.1 + Connection: keep-alive（冗長だがtrue）"""
         req = HTTPRequest(
-            "GET", "/", "HTTP/1.1",
-            {"host": "localhost", "connection": "keep-alive"}, b""
+            "GET",
+            "/",
+            "HTTP/1.1",
+            {"host": "localhost", "connection": "keep-alive"},
+            b"",
+            "",
         )
         assert get_keep_alive(req) is True
 
     def test_http10_connection_close(self):
         """HTTP/1.0 + Connection: close"""
         req = HTTPRequest(
-            "GET", "/", "HTTP/1.0",
-            {"host": "localhost", "connection": "close"}, b""
+            "GET",
+            "/",
+            "HTTP/1.0",
+            {"host": "localhost", "connection": "close"},
+            b"",
+            "",
         )
         assert get_keep_alive(req) is False
 
@@ -405,6 +435,7 @@ class TestGetKeepAlive:
 # =============================================================================
 # get_preferred_encoding
 # =============================================================================
+
 
 class TestGetPreferredEncoding:
     """get_preferred_encoding関数のテスト"""
@@ -443,6 +474,7 @@ class TestGetPreferredEncoding:
 # =============================================================================
 # compress_content
 # =============================================================================
+
 
 class TestCompressContent:
     """compress_content関数のテスト"""
@@ -496,6 +528,7 @@ class TestCompressContent:
 # get_http_reason_phrase
 # =============================================================================
 
+
 class TestGetHTTPReasonPhrase:
     """get_http_reason_phrase関数のテスト"""
 
@@ -521,7 +554,7 @@ class TestGetHTTPReasonPhrase:
         assert get_http_reason_phrase(500) == "Internal Server Error"
 
     def test_unknown_status_code(self):
-        assert get_http_reason_phrase(999) == "Unknown Status Code"
+        assert get_http_reason_phrase(999) == "-1"
 
     def test_100_continue(self):
         assert get_http_reason_phrase(100) == "Continue"
@@ -537,52 +570,53 @@ class TestGetHTTPReasonPhrase:
 # レスポンスヘルパー関数
 # =============================================================================
 
+
 class TestResponseHelpers:
     """response_NNN ヘルパー関数のテスト"""
 
     def test_response_200(self):
-        resp = response_200(b"Hello", "text/plain")
+        resp = response_any(200, contents="Hello")
         assert resp.status_code == 200
-        assert resp.content == b"Hello"
+        assert resp.content == "Hello"
         assert resp.content_type == "text/plain"
 
     def test_response_204(self):
-        resp = response_204()
+        resp = response_any(204, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 204
         assert "Allow" in resp.headers
 
     def test_response_301(self):
-        resp = response_301("/new-location")
+        resp = response_any(301, header={"Location": "/new-location"})
         assert resp.status_code == 301
         assert resp.headers["Location"] == "/new-location"
 
     def test_response_400(self):
-        resp = response_400()
+        resp = response_any(400)
         assert resp.status_code == 400
 
     def test_response_403(self):
-        resp = response_403()
+        resp = response_any(403)
         assert resp.status_code == 403
 
     def test_response_404(self):
-        resp = response_404()
+        resp = response_any(404)
         assert resp.status_code == 404
 
     def test_response_405(self):
-        resp = response_405()
+        resp = response_any(405, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 405
         assert "Allow" in resp.headers
 
     def test_response_413(self):
-        resp = response_413()
+        resp = response_any(413)
         assert resp.status_code == 413
 
     def test_response_431(self):
-        resp = response_431()
+        resp = response_any(431)
         assert resp.status_code == 431
 
     def test_response_500(self):
-        resp = response_500()
+        resp = response_any(500)
         assert resp.status_code == 500
 
 
@@ -590,33 +624,34 @@ class TestResponseHelpers:
 # error_response
 # =============================================================================
 
+
 class TestErrorResponse:
     """error_response関数のテスト"""
 
     def test_error_400(self):
-        resp = error_response(400, "Bad Request")
+        resp = response_any(400)
         assert resp.status_code == 400
 
     def test_error_404(self):
-        resp = error_response(404, "Not Found")
+        resp = response_any(404)
         assert resp.status_code == 404
 
     def test_error_405(self):
-        resp = error_response(405, "Method Not Allowed")
+        resp = response_any(405, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 405
         assert "Allow" in resp.headers
 
     def test_error_413(self):
-        resp = error_response(413, "Too Large")
+        resp = response_any(413)
         assert resp.status_code == 413
 
     def test_error_431(self):
-        resp = error_response(431, "Too Large Headers")
+        resp = response_any(431)
         assert resp.status_code == 431
 
     def test_error_unknown_falls_to_500(self):
         """未知のステータスコードは500にフォールバック"""
-        resp = error_response(999, "Unknown")
+        resp = response_any(999)
         assert resp.status_code == 500
 
 
@@ -624,24 +659,25 @@ class TestErrorResponse:
 # build_response
 # =============================================================================
 
+
 class TestBuildResponse:
     """build_response関数のテスト"""
 
     def _make_get_request(self, path="/", headers=None):
         if headers is None:
             headers = {"host": "localhost"}
-        return HTTPRequest("GET", path, "HTTP/1.1", headers, b"")
+        return HTTPRequest("GET", path, "HTTP/1.1", headers, b"", "")
 
     def _make_head_request(self, path="/", headers=None):
         if headers is None:
             headers = {"host": "localhost"}
-        return HTTPRequest("HEAD", path, "HTTP/1.1", headers, b"")
+        return HTTPRequest("HEAD", path, "HTTP/1.1", headers, b"", "")
 
     def test_basic_200_response(self):
         """200レスポンスの基本構造"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "Hello")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
 
         assert b"HTTP/1.1 200 OK" in raw
         assert b"Content-Type: text/plain" in raw
@@ -651,15 +687,15 @@ class TestBuildResponse:
     def test_404_response(self):
         """404レスポンスの構造"""
         req = self._make_get_request()
-        resp = response_404()
-        raw = build_response(resp, req)
+        resp = response_any(404)
+        raw, _ = build_response(resp, req)
         assert b"HTTP/1.1 404 Not Found" in raw
 
     def test_head_no_body(self):
         """HEADリクエストではbodyが空"""
         req = self._make_head_request()
         resp = HTTPResponse(200, "text/plain", "Hello")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
 
         # ヘッダーとボディを分離
         header_part, _, body = raw.partition(b"\r\n\r\n")
@@ -668,22 +704,22 @@ class TestBuildResponse:
     def test_301_has_location(self):
         """301レスポンスにLocationヘッダー"""
         req = self._make_get_request()
-        resp = response_301("/new")
-        raw = build_response(resp, req)
+        resp = response_any(301, header={"Location": "/new"})
+        raw, _ = build_response(resp, req)
         assert b"Location: /new" in raw
 
     def test_204_content_length_zero(self):
         """204レスポンスのContent-Lengthは0"""
         req = self._make_get_request()
-        resp = response_204()
-        raw = build_response(resp, req)
+        resp = response_any(204)
+        raw, _ = build_response(resp, req)
         assert b"Content-Length: 0" in raw
 
     def test_response_has_crlf_line_endings(self):
         """レスポンスのヘッダーはCRLF区切り"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "Test")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         header_part = raw.split(b"\r\n\r\n")[0]
         # 各行がCRLFで区切られている
         lines = header_part.split(b"\r\n")
@@ -694,17 +730,16 @@ class TestBuildResponse:
         req = self._make_get_request()
         content = b"\x89PNG\r\n\x1a\n"
         resp = HTTPResponse(200, "image/png", content)
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert content in raw
 
     def test_custom_headers_included(self):
         """カスタムヘッダーが出力に含まれる"""
         req = self._make_get_request()
         resp = HTTPResponse(
-            200, "text/plain", "OK",
-            {"X-Custom": "test-value", "X-Another": "value2"}
+            200, "text/plain", "OK", {"X-Custom": "test-value", "X-Another": "value2"}
         )
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"X-Custom: test-value" in raw
         assert b"X-Another: value2" in raw
 
@@ -712,20 +747,20 @@ class TestBuildResponse:
         """Serverヘッダーが含まれる"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "OK")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"Server: MyHTTPServer" in raw
 
     def test_connection_header_present(self):
         """Connectionヘッダーが含まれる"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "OK")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         # Connectionヘッダーが存在する
         assert b"Connection:" in raw
 
     def test_error_responses_content_length_zero(self):
         """4xxエラーのContent-Lengthは0"""
         req = self._make_get_request()
-        resp = response_400()
-        raw = build_response(resp, req)
+        resp = response_any(400)
+        raw, _ = build_response(resp, req)
         assert b"Content-Length: 0" in raw

@@ -1,27 +1,31 @@
 import gzip
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from email.utils import format_datetime
+from email.utils import format_datetime, formatdate
 from enum import Enum, auto
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import Dict, Union
 from urllib.parse import urlsplit
 
 import zstandard as zstd
 from icecream import ic
 
+from reason_phrase import get_http_reason_phrase
+
 
 class HTTPRequest:
-    def __init__(self, method, path, version, headers, body):
+    def __init__(self, method, path, version, headers, body, addr):
         self.method = method
         self.path = path
         self.version = version
         self.headers = headers
         self.body = body
+        self.remote_addr = addr
 
     def __repr__(self):
         headers_str = "\n".join(f"    {k}: {v}" for k, v in self.headers.items())
-        return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n)"
+        return f"HTTPRequest(\n    method={self.method},\n    path={self.path},\n    version={self.version},\n    headers={{\n{headers_str}\n    }},\n    body={repr(self.body)}\n   remote_addr={self.remote_addr}\n"
 
 
 @dataclass
@@ -77,7 +81,10 @@ HTTP_METHODS = {
 
 
 # ヘッダーとボディを分けて解析
-def receive_safe_request(client_sock):
+def receive_safe_request(client_sock, addr):
+
+    # TODO globalで禁止なipなら拒否
+
     buffer = b""
     # ヘッダー
     while b"\r\n\r\n" not in buffer:
@@ -114,12 +121,12 @@ def receive_safe_request(client_sock):
             break
         body += data
 
-    print(header_text, body)
+    ic(header_text, body)
 
     return header_text, body
 
 
-def parse_request(header: str, body: bytes) -> HTTPRequest:
+def parse_request(header: str, body: bytes, addr) -> HTTPRequest:
     lines = header.strip().split("\r\n")
 
     request_line = lines[0]
@@ -146,7 +153,7 @@ def parse_request(header: str, body: bytes) -> HTTPRequest:
             key, value = line.split(": ", 1)
             headers[key.lower()] = value
 
-    return HTTPRequest(method, path, version, headers, body)
+    return HTTPRequest(method, path, version, headers, body, addr)
 
 
 def vetify_request(request: HTTPRequest):
@@ -177,42 +184,8 @@ def vetify_request(request: HTTPRequest):
 
     ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
     if not any(request.method in s for s in ALLOW_METHOD):
-        print("NOT ALLOW !!!")
+        ic("NOT ALLOW !!!")
         raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
-
-
-# HTTPステータスコードから理由フレーズを返す
-def get_http_reason_phrase(status_code):
-    status_map = {
-        # 1xx
-        100: "Continue",
-        101: "Switching Protocols",
-        # 2xx
-        200: "OK",
-        201: "Created",
-        202: "Accepted",
-        204: "No Content",
-        # 3xx
-        301: "Moved Permanently",
-        302: "Found",
-        304: "Not Modified",
-        307: "Temporary Redirect",
-        # 4xx
-        400: "Bad Request",
-        401: "Unauthorized",
-        403: "Forbidden",
-        404: "Not Found",
-        405: "Method Not Allowed",
-        429: "Too Many Requests",
-        # 5xx
-        500: "Internal Server Error",
-        502: "Bad Gateway",
-        503: "Service Unavailable",
-        504: "Gateway Timeout",
-    }
-
-    # 辞書にない場合は "Unknown" を返す
-    return status_map.get(status_code, "Unknown Status Code")
 
 
 # ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
@@ -254,113 +227,30 @@ def get_keep_alive(request: HTTPRequest) -> bool:
         return True
 
 
-def response_301(location: str) -> HTTPResponse:
-    return HTTPResponse(
-        301,
-        "text/plain; charset=utf-8",
-        "301 Moved Permanently",
-        {"Location": location},
-    )
+def response_any(
+    code: int,
+    content_type: str = "text/plain",
+    contents="",
+    header=None,
+):
+    reason = get_http_reason_phrase(code)
+    # 存在しない番号
+    if reason == "-1":
+        code = 500
+    # エラー番台
+    if contents == "":
+        if 400 <= code < 600:
+            contents = get_error_page(code, reason)
+            content_type = "text/html"
 
+    if header:
+        return HTTPResponse(code, content_type, contents, header)
 
-def response_200(content: bytes, content_type: str) -> HTTPResponse:
     return HTTPResponse(
-        200,
+        code,
         content_type,
-        content,
+        contents,
     )
-
-
-def response_204() -> HTTPResponse:
-    return HTTPResponse(
-        204,
-        "text/plain; charset=utf-8",
-        "",
-        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
-    )
-
-
-def response_400() -> HTTPResponse:
-    return HTTPResponse(
-        400,
-        "text/plain; charset=utf-8",
-        "400",
-    )
-
-
-def response_404() -> HTTPResponse:
-    return HTTPResponse(
-        404,
-        "text/plain; charset=utf-8",
-        "404 Not Found",
-    )
-
-
-def response_413() -> HTTPResponse:
-    return HTTPResponse(
-        413,
-        "text/plain; charset=utf-8",
-        "413 Payload Too Large",
-    )
-
-
-def response_414() -> HTTPResponse:
-    return HTTPResponse(
-        414,
-        "text/plain; charset=utf-8",
-        "414 URL Too Long",
-    )
-
-
-def response_431() -> HTTPResponse:
-    return HTTPResponse(
-        431,
-        "text/plain; charset=utf-8",
-        "431 Request Header Fields Too Large",
-    )
-
-
-def response_500() -> HTTPResponse:
-    return HTTPResponse(
-        500,
-        "text/plain; charset=utf-8",
-        "500 Internal Server Error",
-    )
-
-
-def response_403() -> HTTPResponse:
-    return HTTPResponse(
-        403,
-        "text/plain; charset=utf-8",
-        "403 Forbidden",
-    )
-
-
-def response_405() -> HTTPResponse:
-    return HTTPResponse(
-        405,
-        "text/plain; charset=utf-8",
-        "405 Method Not Allowed",
-        {"Allow": "GET, HEAD, OPTIONS"},  # HACK Configから参照
-    )
-
-
-def error_response(status: int, msg: str):
-    if status == 400:
-        return response_400()
-    elif status == 405:
-        return response_405()
-    elif status == 404:
-        return response_404()
-    elif status == 413:
-        return response_413()
-    elif status == 414:
-        return response_414()
-    elif status == 431:
-        return response_431()
-    else:
-        print("FALL BACK ERROR 500")
-        return response_500()
 
 
 # リストから優先される圧縮方式を取得
@@ -421,6 +311,8 @@ def build_response(
         headers.append("Connection: keep-alive")
         headers.append("Keep-Alive: timeout=61")
 
+    ic(keep_alive)
+
     headers.append("Server: MyHTTPServer/0.1")
 
     # encoding = get_preferred_encoding(accept_encoding, ["gzip"])
@@ -440,7 +332,7 @@ def build_response(
         else:
             content_bytes = response.content.encode("utf-8")
 
-    return header_blob.encode("utf-8") + content_bytes
+    return header_blob.encode("utf-8") + content_bytes, keep_alive
 
 
 def contains_control_chars(s: str) -> bool:
@@ -456,3 +348,46 @@ def normalize_http_url(url: str) -> str:
     if p.query:
         return f"{path}?{p.query}"
     return path
+
+
+# routeing順序を考慮し、長い順から順番にマッチさせる。
+def find_best_route(server, request_path_str: str):
+    req_obj = PurePosixPath(request_path_str)
+
+    candidates = []
+    for route in server.routes:
+        route_obj = PurePosixPath(route.path)
+
+        if req_obj.is_relative_to(route_obj):
+            candidates.append(route)
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda r: len(r.path))
+
+
+# HTTPエラーページをテンプレートから生成する
+def get_error_page(
+    code,
+    message,
+    template_path="./template/error_page.html.template",
+    server_name="MyServer/1.0",
+):
+    current_time = formatdate(timeval=None, localtime=False, usegmt=True)
+
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # 文字列置換にて実装
+        html_content = html_content.replace("{{code}}", str(code))
+        html_content = html_content.replace("{{message}}", str(message))
+        html_content = html_content.replace("{{server}}", str(server_name))
+        html_content = html_content.replace("{{time}}", current_time)
+
+        return html_content
+
+    # フォールバック用
+    except FileNotFoundError:
+        return f"<html><body><h1>{code} {message}</h1><p>Error loading template.</p></body></html>"

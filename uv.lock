@@ -277,6 +277,7 @@ name = "myhttpserver"
 version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
+    { name = "pyhcl" },
     { name = "zstandard" },
 ]
 
@@ -293,7 +294,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "zstandard", specifier = ">=0.25.0" }]
+requires-dist = [
+    { name = "pyhcl", specifier = ">=0.4.5" },
+    { name = "zstandard", specifier = ">=0.25.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -410,6 +414,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631, upload-time = "2025-06-21T13:39:12.283Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
+]
+
+[[package]]
+name = "pyhcl"
+version = "0.4.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/b9/ff5019eef43b613f49a4695253d8814f8a7012745ae570158e5b64967200/pyhcl-0.4.5.tar.gz", hash = "sha256:c47293a51ccdd25e18bb5c8c0ab0ffe355b37c87f8d6f9d3280dc41efd4740bc", size = 61772, upload-time = "2023-09-01T05:25:16.788Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/b4/b766fd33774b55cc15f240916219c4ce9c1bd7bef4acd997ad36ff3622d0/pyhcl-0.4.5-py3-none-any.whl", hash = "sha256:30ee337d330d1f90c9f5ed8f49c468f66c8e6e43192bdc7c6ece1420beb3070c", size = 50160, upload-time = "2023-09-01T05:25:15.237Z" },
 ]
 
 [[package]]

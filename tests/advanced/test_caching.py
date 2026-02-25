@@ -4,12 +4,11 @@
 Cache-Control, ETag, Last-Modified, If-Modified-Since, If-None-Match,
 304 Not Modified レスポンスなどをテストする。
 """
+
 import email.utils
 import socket
-import time
 from datetime import datetime, timezone
 
-import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -47,7 +46,7 @@ def _parse_response(raw):
 # ETag ヘッダー（Section 14.19）
 # =============================================================================
 
-@pytest.mark.xfail(reason="ETag not implemented")
+
 class TestETag:
     """Section 14.19: ETagヘッダーの検証"""
 
@@ -86,7 +85,7 @@ class TestETag:
 # Last-Modified ヘッダー（Section 14.29）
 # =============================================================================
 
-@pytest.mark.xfail(reason="Last-Modified header not implemented")
+
 class TestLastModified:
     """Section 14.29: Last-Modifiedヘッダーの検証"""
 
@@ -124,10 +123,10 @@ class TestLastModified:
 # If-Modified-Since（Section 14.25）/ 304 Not Modified
 # =============================================================================
 
+
 class TestIfModifiedSince:
     """Section 14.25: If-Modified-Sinceによる条件付きGET"""
 
-    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_with_if_modified_since(self, server):
         """Last-Modifiedの値でIf-Modified-Sinceを送ると304が返る"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
@@ -150,7 +149,6 @@ class TestIfModifiedSince:
         # ファイルは2001年以降に更新されているはず
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_has_no_body(self, server):
         """304レスポンスにはボディが含まれない"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
@@ -165,7 +163,6 @@ class TestIfModifiedSince:
         assert resp2.status_code == 304
         assert len(resp2.content) == 0
 
-    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_304_preserves_headers(self, server):
         """304でもETag, Content-Location等のヘッダーは含まれるべき"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
@@ -193,7 +190,6 @@ class TestIfModifiedSince:
         # 不正な日付は無視して200を返す
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="Conditional requests (If-Modified-Since) not implemented")
     def test_if_modified_since_future_date(self, server):
         """未来の日付のIf-Modified-Since"""
         future = "Thu, 01 Jan 2099 00:00:00 GMT"
@@ -210,10 +206,10 @@ class TestIfModifiedSince:
 # If-None-Match（Section 14.26）/ ETag条件付きGET
 # =============================================================================
 
+
 class TestIfNoneMatch:
     """Section 14.26: If-None-Matchによる条件付きGET"""
 
-    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_304_with_matching_etag(self, server):
         """ETagが一致するIf-None-Matchで304が返る"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
@@ -236,7 +232,6 @@ class TestIfNoneMatch:
         )
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_if_none_match_wildcard(self, server):
         """If-None-Match: * はリソースが存在すれば304"""
         resp = requests.get(
@@ -247,7 +242,6 @@ class TestIfNoneMatch:
         # リソースが存在するなら304
         assert resp.status_code == 304
 
-    @pytest.mark.xfail(reason="ETag / If-None-Match not implemented")
     def test_head_with_if_none_match(self, server):
         """HEADリクエスト + If-None-Match"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
@@ -267,6 +261,7 @@ class TestIfNoneMatch:
 # Cache-Control ヘッダー（Section 14.9）
 # =============================================================================
 
+
 class TestCacheControl:
     """Section 14.9: Cache-Controlヘッダーの検証"""
 
@@ -282,8 +277,12 @@ class TestCacheControl:
             assert any(
                 directive in cc.lower()
                 for directive in [
-                    "no-cache", "no-store", "max-age", "public",
-                    "private", "must-revalidate",
+                    "no-cache",
+                    "no-store",
+                    "max-age",
+                    "public",
+                    "private",
+                    "must-revalidate",
                 ]
             )
 
@@ -320,6 +319,7 @@ class TestCacheControl:
 # Expires ヘッダー（Section 14.21）
 # =============================================================================
 
+
 class TestExpires:
     """Section 14.21: Expiresヘッダーの検証"""
 
@@ -337,7 +337,7 @@ class TestExpires:
 # If-Match（Section 14.24）
 # =============================================================================
 
-@pytest.mark.xfail(reason="ETag / If-Match not implemented")
+
 class TestIfMatch:
     """Section 14.24: If-Matchヘッダーの検証"""
 
@@ -374,6 +374,7 @@ class TestIfMatch:
 # If-Unmodified-Since（Section 14.28）
 # =============================================================================
 
+
 class TestIfUnmodifiedSince:
     """Section 14.28: If-Unmodified-Sinceヘッダーの検証"""
 
@@ -388,7 +389,6 @@ class TestIfUnmodifiedSince:
         )
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="If-Unmodified-Since not implemented")
     def test_if_unmodified_since_failed(self, server):
         """過去の日付以降に変更されていれば412"""
         past = "Mon, 01 Jan 2001 00:00:00 GMT"
@@ -405,10 +405,10 @@ class TestIfUnmodifiedSince:
 # 条件付きリクエストの組み合わせ
 # =============================================================================
 
+
 class TestConditionalCombinations:
     """複数の条件付きヘッダーの組み合わせ"""
 
-    @pytest.mark.xfail(reason="Conditional requests (ETag + If-Modified-Since) not implemented")
     def test_if_modified_since_and_if_none_match(self, server):
         """If-Modified-SinceとIf-None-Matchの同時使用"""
         resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
