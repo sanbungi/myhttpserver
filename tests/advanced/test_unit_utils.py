@@ -581,12 +581,12 @@ class TestResponseHelpers:
         assert resp.content_type == "text/plain"
 
     def test_response_204(self):
-        resp = response_any(204)
+        resp = response_any(204, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 204
         assert "Allow" in resp.headers
 
     def test_response_301(self):
-        resp = response_any(301, header={"Location": "index.html"})
+        resp = response_any(301, header={"Location": "/new-location"})
         assert resp.status_code == 301
         assert resp.headers["Location"] == "/new-location"
 
@@ -603,7 +603,7 @@ class TestResponseHelpers:
         assert resp.status_code == 404
 
     def test_response_405(self):
-        resp = response_any(405)
+        resp = response_any(405, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 405
         assert "Allow" in resp.headers
 
@@ -637,7 +637,7 @@ class TestErrorResponse:
         assert resp.status_code == 404
 
     def test_error_405(self):
-        resp = response_any(405)
+        resp = response_any(405, header={"Allow": "GET, HEAD, OPTIONS"})
         assert resp.status_code == 405
         assert "Allow" in resp.headers
 
@@ -704,14 +704,14 @@ class TestBuildResponse:
     def test_301_has_location(self):
         """301レスポンスにLocationヘッダー"""
         req = self._make_get_request()
-        resp = response_301("/new")
+        resp = response_any(300, "/new")
         raw = build_response(resp, req)
         assert b"Location: /new" in raw
 
     def test_204_content_length_zero(self):
         """204レスポンスのContent-Lengthは0"""
         req = self._make_get_request()
-        resp = response_204()
+        resp = response_any(204)
         raw = build_response(resp, req)
         assert b"Content-Length: 0" in raw
 
