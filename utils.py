@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 import zstandard as zstd
 from icecream import ic
 
+from reason_phrase import get_http_reason_phrase
+
 
 class HTTPRequest:
     def __init__(self, method, path, version, headers, body, addr):
@@ -186,41 +188,6 @@ def vetify_request(request: HTTPRequest):
         raise HttpError(405, "METHOD NOT ALLOWED", "Method Not Allowed")
 
 
-# HTTPステータスコードから理由フレーズを返す
-def get_http_reason_phrase(status_code):
-    status_map = {
-        # 1xx
-        100: "Continue",
-        101: "Switching Protocols",
-        # 2xx
-        200: "OK",
-        201: "Created",
-        202: "Accepted",
-        204: "No Content",
-        # 3xx
-        301: "Moved Permanently",
-        302: "Found",
-        304: "Not Modified",
-        307: "Temporary Redirect",
-        # 4xx
-        400: "Bad Request",
-        401: "Unauthorized",
-        403: "Forbidden",
-        404: "Not Found",
-        405: "Method Not Allowed",
-        413: "Payload Too Large",
-        429: "Too Many Requests",
-        # 5xx
-        500: "Internal Server Error",
-        502: "Bad Gateway",
-        503: "Service Unavailable",
-        504: "Gateway Timeout",
-    }
-
-    # 辞書にない場合は "Unknown" を返す
-    return status_map.get(status_code, "Unknown Status Code")
-
-
 # ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
 def get_content_type(file_path: str) -> tuple[str, bool]:
     from pathlib import Path
@@ -266,12 +233,14 @@ def response_any(
     contents="",
     header=None,
 ):
-    if contents == "":
-        reason = get_http_reason_phrase(code)
-        # エラー番台
-        if 400 <= code < 600:
-            contents = get_error_page(code, reason)
-            content_type = "text/html"
+    reason = get_http_reason_phrase(code)
+    # 存在しない番号
+    if reason == -1:
+        code = 500
+    # エラー番台
+    if 400 <= code < 600:
+        contents = get_error_page(code, reason)
+        content_type = "text/html"
 
     if header:
         return HTTPResponse(code, content_type, contents, header)
