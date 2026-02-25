@@ -554,7 +554,7 @@ class TestGetHTTPReasonPhrase:
         assert get_http_reason_phrase(500) == "Internal Server Error"
 
     def test_unknown_status_code(self):
-        assert get_http_reason_phrase(999) == "0"
+        assert get_http_reason_phrase(999) == "-1"
 
     def test_100_continue(self):
         assert get_http_reason_phrase(100) == "Continue"
@@ -677,7 +677,7 @@ class TestBuildResponse:
         """200レスポンスの基本構造"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "Hello")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
 
         assert b"HTTP/1.1 200 OK" in raw
         assert b"Content-Type: text/plain" in raw
@@ -688,14 +688,14 @@ class TestBuildResponse:
         """404レスポンスの構造"""
         req = self._make_get_request()
         resp = response_any(404)
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"HTTP/1.1 404 Not Found" in raw
 
     def test_head_no_body(self):
         """HEADリクエストではbodyが空"""
         req = self._make_head_request()
         resp = HTTPResponse(200, "text/plain", "Hello")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
 
         # ヘッダーとボディを分離
         header_part, _, body = raw.partition(b"\r\n\r\n")
@@ -705,21 +705,21 @@ class TestBuildResponse:
         """301レスポンスにLocationヘッダー"""
         req = self._make_get_request()
         resp = response_any(300, "/new")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"Location: /new" in raw
 
     def test_204_content_length_zero(self):
         """204レスポンスのContent-Lengthは0"""
         req = self._make_get_request()
         resp = response_any(204)
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"Content-Length: 0" in raw
 
     def test_response_has_crlf_line_endings(self):
         """レスポンスのヘッダーはCRLF区切り"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "Test")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         header_part = raw.split(b"\r\n\r\n")[0]
         # 各行がCRLFで区切られている
         lines = header_part.split(b"\r\n")
@@ -730,7 +730,7 @@ class TestBuildResponse:
         req = self._make_get_request()
         content = b"\x89PNG\r\n\x1a\n"
         resp = HTTPResponse(200, "image/png", content)
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert content in raw
 
     def test_custom_headers_included(self):
@@ -739,7 +739,7 @@ class TestBuildResponse:
         resp = HTTPResponse(
             200, "text/plain", "OK", {"X-Custom": "test-value", "X-Another": "value2"}
         )
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"X-Custom: test-value" in raw
         assert b"X-Another: value2" in raw
 
@@ -747,14 +747,14 @@ class TestBuildResponse:
         """Serverヘッダーが含まれる"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "OK")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"Server: MyHTTPServer" in raw
 
     def test_connection_header_present(self):
         """Connectionヘッダーが含まれる"""
         req = self._make_get_request()
         resp = HTTPResponse(200, "text/plain", "OK")
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         # Connectionヘッダーが存在する
         assert b"Connection:" in raw
 
@@ -762,5 +762,5 @@ class TestBuildResponse:
         """4xxエラーのContent-Lengthは0"""
         req = self._make_get_request()
         resp = response_any(400)
-        raw = build_response(resp, req)
+        raw, _ = build_response(resp, req)
         assert b"Content-Length: 0" in raw
