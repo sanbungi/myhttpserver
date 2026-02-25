@@ -235,12 +235,13 @@ def response_any(
 ):
     reason = get_http_reason_phrase(code)
     # 存在しない番号
-    if reason == -1:
+    if reason == "-1":
         code = 500
     # エラー番台
-    if 400 <= code < 600:
-        contents = get_error_page(code, reason)
-        content_type = "text/html"
+    if contents == "":
+        if 400 <= code < 600:
+            contents = get_error_page(code, reason)
+            content_type = "text/html"
 
     if header:
         return HTTPResponse(code, content_type, contents, header)

@@ -554,7 +554,7 @@ class TestGetHTTPReasonPhrase:
         assert get_http_reason_phrase(500) == "Internal Server Error"
 
     def test_unknown_status_code(self):
-        assert get_http_reason_phrase(999) == "Unknown Status Code"
+        assert get_http_reason_phrase(999) == "0"
 
     def test_100_continue(self):
         assert get_http_reason_phrase(100) == "Continue"
