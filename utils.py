@@ -234,12 +234,14 @@ def response_any(
     code: int,
     content_type: str = "text/plain",
     contents="",
+    no_body=False,
     header=None,
 ):
     reason = get_http_reason_phrase(code)
     # 存在しない番号
     if reason == "-1":
         code = 500
+
     # エラー番台
     if contents == "":
         if 400 <= code < 600:
@@ -335,13 +337,19 @@ def build_response(
             content_bytes = response.content.encode("utf-8")
 
         # etag生成
-        etag = generate_content_etag(content_bytes)
+        etag = generage_file_etag(request.path)
         if encoding:
             headers.append(f'ETag: "{etag}-{encoding}"')
         else:
             headers.append(f'ETag: "{etag}"')
 
+    no_body = code == 304
+    if no_body:
+        ic("NO_BODY")
+        header_blob = "\r\n".join(headers) + "\r\n\r\n"
+        return header_blob.encode("utf-8"), keep_alive
     header_blob = "\r\n".join(headers) + "\r\n\r\n"
+
     return header_blob.encode("utf-8") + content_bytes, keep_alive
 
 
@@ -403,12 +411,28 @@ def get_error_page(
         return f"<html><body><h1>{code} {message}</h1><p>Error loading template.</p></body></html>"
 
 
+def get_last_modified(path):
+    path = "html" + path
+    try:
+        stat = os.stat(path)
+        last_modified = formatdate(stat.st_mtime, usegmt=True)
+        return last_modified
+
+    except (FileNotFoundError, PermissionError):
+        traceback.print_exc()
+        return None
+
+
 def generage_file_etag(path):
+    path = "html" + path
+    ic(path)
     try:
         stat = os.stat(path)
 
-        mtime = int(stat.st_mtime_ns)
+        mtime = int(stat.st_mtime)
         size = stat.st_size
+        ic(mtime)
+        ic(size)
 
         mtime_hex = hex(mtime)[2:]
         size_hex = hex(size)[2:]
@@ -422,3 +446,28 @@ def generage_file_etag(path):
 def generate_content_etag(content: bytes):
     content_hash = xxhash.xxh64(content).hexdigest()
     return f"{content_hash}"
+
+
+def check_cache_if_none_match(request: HTTPRequest):
+    tag = request.headers.get("if-none-match", "")
+    tag = tag.replace('"', "")
+    if tag == "":
+        return False
+
+    ic(tag)
+
+    # 圧縮化を同じロジックで判定
+    accept_encoding = request.headers.get("accept-encoding", "")
+    encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+
+    current_etag = generage_file_etag(request.path)
+    if encoding:
+        current_etag = f"{current_etag}-{encoding}"
+
+    ic(current_etag)
+    ic(tag)
+
+    if current_etag == tag:
+        return True
+
+    return False
