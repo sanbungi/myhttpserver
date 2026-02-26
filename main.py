@@ -22,8 +22,10 @@ from utils import (
     HTTPRequest,
     HTTPResponse,
     build_response,
+    check_cache_if_none_match,
     find_best_route,
     get_content_type,
+    get_last_modified,
     parse_request,
     receive_safe_request,
     response_any,
@@ -151,6 +153,18 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                     # 400を返して禁止を表現
                     return response_any(400)
 
+            cache_hit = check_cache_if_none_match(request)
+            if cache_hit:
+                ic(cache_hit)
+                last_modify = get_last_modified(request.path)
+                return response_any(
+                    304,
+                    header={
+                        "Last-Modified": last_modify,
+                        "Cache-Control": "max-age=3600",
+                    },
+                )
+
             if request_path == Path("/"):
                 content = cache.read(f"{server.root}/{route.index[0]}", mode="r")
                 return response_any(
@@ -178,7 +192,14 @@ def route_response(request: HTTPRequest) -> HTTPResponse:
                 # 日本語等だとカウントがずれるので先にエンコード
                 content = content.encode("utf-8")
 
-            return response_any(200, content_type, content)
+            last_modify = get_last_modified(request.path)
+
+            return response_any(
+                200,
+                content_type,
+                content,
+                {"Last-Modified": last_modify, "Cache-Control": "max-age=3600"},
+            )
         # リバースプロキシ
         elif route.type == "proxy":
             send_header = dict(request.headers)
