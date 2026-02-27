@@ -1,11 +1,12 @@
 import asyncio
 import traceback
+from typing import Optional, Tuple
 
 from icecream import ic
 
 from config_model import AppConfig
 
-from .protocol import parse_request
+from .protocol import HttpError, HTTPResponse, parse_request
 from .router import resolve_route
 
 
@@ -18,22 +19,18 @@ async def handle_client(
 
     try:
         while True:
-            try:
-                # タイムアウト付きでヘッダー終了（空行）まで読み込む
-                # HTTPヘッダーの区切りは \r\n\r\n
-                header_data = await asyncio.wait_for(
-                    reader.readuntil(b"\r\n\r\n"), timeout=5.0
-                )
-            except (asyncio.TimeoutError, asyncio.IncompleteReadError):
-                # タイムアウトまたは切断
+            loaded_data = await safe_load(reader, writer, ip)
+
+            if loaded_data is None:
+                # 切断、タイムアウト、またはエラー送信済みのためループを抜けて接続を切る
                 break
-            except ConnectionResetError:
-                break
+
+            header_part, full_body = loaded_data
 
             ic(config)
 
             # リクエスト解析
-            request = parse_request(header_data, ip)
+            request = parse_request(header_part, ip)
             if not request:
                 break
 
@@ -58,6 +55,11 @@ async def handle_client(
 
             if should_close:
                 break
+    except HttpError as e:
+        ic("send HTTPError e:{e}")
+        response = HTTPResponse(e.status)
+        writer.write(response.to_bytes())
+        await writer.drain()  # 送信完了待ち
 
     except Exception as e:
         print(f"[-] Error: {e}")
@@ -72,3 +74,79 @@ async def handle_client(
             # その他のエラーは念のためログに出す（デバッグ用）
             traceback.print_exc()
             print(f"[-] Error during close: {e}")
+
+
+MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
+MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
+
+
+async def safe_load(
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, peer_ip: str
+) -> Optional[Tuple[bytes, bytes]]:
+    buffer = b""
+    header_data = None
+
+    # ヘッダー確認
+    try:
+        while True:
+            # バッファサイズチェック
+            if len(buffer) > MAX_HEADER_SIZE:
+                print(f"[-] Error: Header too large from {peer_ip}")
+                raise HttpError(431)
+
+            if b"\r\n\r\n" in buffer:
+                header_data = buffer
+                break
+
+            # タイムアウト付きで読み込み
+            chunk = await asyncio.wait_for(reader.read(4096), timeout=5.0)
+            if not chunk:
+                return None
+            buffer += chunk
+
+    except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+        return None
+    except ConnectionResetError:
+        return None
+
+    # ヘッダーとボディの残りに分割
+    header_part, body_start = header_data.split(b"\r\n\r\n", 1)
+
+    # Content-Length 解析とチェック
+    try:
+        header_text = header_part.decode("utf-8", errors="ignore")
+    except Exception:
+        raise HttpError(400)
+
+    content_length = 0
+    for line in header_text.split("\r\n"):
+        if line.lower().startswith("content-length:"):
+            try:
+                content_length = int(line.split(":")[1].strip())
+            except ValueError:
+                pass
+            break
+
+    # 413 Payload Too Large
+    if content_length > MAX_BODY_SIZE:
+        print(f"[-] Error: Body too large ({content_length} bytes) from {peer_ip}")
+        raise HttpError(413)
+
+    # ボディ読み込み ---
+    full_body = body_start
+    remaining_bytes = content_length - len(body_start)
+
+    if remaining_bytes > 0:
+        try:
+            body_chunk = await asyncio.wait_for(
+                reader.readexactly(remaining_bytes), timeout=10.0
+            )
+            full_body += body_chunk
+        except (
+            asyncio.TimeoutError,
+            asyncio.IncompleteReadError,
+            ConnectionResetError,
+        ):
+            return None
+
+    return header_part, full_body

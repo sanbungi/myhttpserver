@@ -38,6 +38,11 @@ class HTTPResponse:
         return f"{status_line}{header_lines}\r\n".encode() + self.body
 
 
+@dataclass
+class HttpError(Exception):
+    status: int
+
+
 def parse_request(data: bytes, remote_addr: str) -> Optional[HTTPRequest]:
     try:
         # ヘッダーとボディを分離（今回は簡易的にヘッダーのみ解析）
