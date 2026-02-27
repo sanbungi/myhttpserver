@@ -98,7 +98,7 @@ def main():
 
     target_ports = [8000]
 
-    cpu_count = 8
+    cpu_count = 4
     workers_per_port = max(1, cpu_count // len(target_ports))
     workers = []
 

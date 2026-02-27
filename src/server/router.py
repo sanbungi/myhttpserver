@@ -4,6 +4,7 @@ import traceback
 from email.utils import formatdate
 from pathlib import Path, PurePosixPath
 
+import httpx
 from icecream import ic
 
 from config_model import AppConfig
@@ -101,7 +102,7 @@ async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse
 
             return HTTPResponse(
                 200,
-                content,
+                str(content).encode("utf-8"),
                 {"Last-Modified": last_modify, "Cache-Control": "max-age=3600"},
             )
 
