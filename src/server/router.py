@@ -1,4 +1,3 @@
-import asyncio
 import ipaddress
 import os
 import traceback
@@ -27,36 +26,6 @@ def read_file_sync(filepath):
     return None
 
 
-async def handle_static(request: HTTPRequest) -> HTTPResponse:
-    path = request.path
-    if path == "/":
-        path = "/index.html"
-
-    # パストラバーサル対策（簡易版）
-    filename = path.lstrip("/")
-    filepath = os.path.join(STATIC_DIR, filename)
-
-    # イベントループを取得して、ファイル読み込みをスレッドプールに投げる
-    loop = asyncio.get_running_loop()
-    content = await loop.run_in_executor(None, read_file_sync, filepath)
-
-    if content:
-        return HTTPResponse(200, content)
-    else:
-        return HTTPResponse(404, b"<h1>404 Not Found</h1>")
-
-
-async def handle_api(request: HTTPRequest) -> HTTPResponse:
-    # 擬似的なAPI処理
-    import json
-
-    data = {"message": "Hello from Async API", "method": request.method}
-    body = json.dumps(data).encode()
-    res = HTTPResponse(200, body)
-    res.set_header("Content-Type", "application/json")
-    return res
-
-
 async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse:
 
     request_path = Path(request.path)
@@ -71,7 +40,7 @@ async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse
         # find_best_route が重い処理でないならそのままで良いが、
         # DBアクセス等があるなら async def にして await する必要がある
         route = find_best_route(server, request_path)
-        ic(route)
+        # ic(route)
 
         if not route:
             return HTTPResponse(404)

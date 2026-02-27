@@ -6,7 +6,7 @@ from icecream import ic
 
 from config_model import AppConfig
 
-from .protocol import HttpError, HTTPResponse, parse_request
+from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import resolve_route
 
 
@@ -27,12 +27,11 @@ async def handle_client(
 
             header_part, full_body = loaded_data
 
-            ic(config)
-
             # リクエスト解析
             request = parse_request(header_part, ip)
             if not request:
                 break
+            vetify_request(request)
 
             # ルーティング実行
             response = await resolve_route(request, config)
@@ -56,7 +55,7 @@ async def handle_client(
             if should_close:
                 break
     except HttpError as e:
-        ic("send HTTPError e:{e}")
+        ic(f"send HTTPError e:{e}")
         response = HTTPResponse(e.status)
         writer.write(response.to_bytes())
         await writer.drain()  # 送信完了待ち
@@ -150,3 +149,51 @@ async def safe_load(
             return None
 
     return header_part, full_body
+
+
+HTTP_METHODS = {
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+    "PATCH",
+    "TRACE",
+    "CONNECT",
+}
+
+
+def contains_control_chars(s: str) -> bool:
+    return any(ord(c) < 32 or ord(c) == 127 for c in s)
+
+
+def vetify_request(request: HTTPRequest):
+    ic(request)
+
+    headers = request.headers
+    hosts = [headers["Host"]] if "Host" in headers else []
+    if len(hosts) == 0:
+        raise HttpError(400, "MISSING_HOST")
+    if len(hosts) > 1:
+        raise HttpError(400, "DUPLICATE_HOST")
+
+    if len(request.path) > 255:
+        raise HttpError(414, "REQUEST_URL_TOO_LONG")
+
+    if request.version not in ("HTTP/1.1", "HTTP/1.0"):
+        raise HttpError(400, "INVALID_HTTP_VERSION")
+
+    if request.method not in HTTP_METHODS:
+        raise HttpError(400, "INVALID_HTTP_METHOD")
+
+    if any(contains_control_chars(h) for h in request.headers):
+        raise HttpError(
+            400,
+            "DISALLOW_CONTAILS_CONTROL_CHARCTER",
+        )
+
+    ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
+    if not any(request.method in s for s in ALLOW_METHOD):
+        ic("NOT ALLOW !!!")
+        raise HttpError(405, "METHOD NOT ALLOWED")
