@@ -50,6 +50,12 @@ def parse_args():
         default="127.0.0.1",
         help="Bind host (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--disable_ic",
+        action="store_true",
+        default=False,
+        help="Disable ic rich print",
+    )
 
     return parser.parse_args()
 
@@ -76,6 +82,10 @@ def main():
     if not os.path.isdir(webroot):
         ic(f"No such directory: {webroot}")
         sys.exit(1)
+
+    if args.disable_ic:
+        print("Disable IC")
+        ic.disable()
 
     ic("MOCK: Server(host={args.host}, port={args.port}, webroot={args.webroot}")
 
