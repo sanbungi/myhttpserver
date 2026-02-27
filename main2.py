@@ -87,8 +87,6 @@ def main():
         print("Disable IC")
         ic.disable()
 
-    ic("MOCK: Server(host={args.host}, port={args.port}, webroot={args.webroot}")
-
     def shutdown_handler(signum, frame):
         ic("Server shutdown...")
 
@@ -98,18 +96,25 @@ def main():
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
+    target_ports = [8000]
+
     cpu_count = 8
+    workers_per_port = max(1, cpu_count // len(target_ports))
     workers = []
 
     print(f"Starting server with {cpu_count} workers on port {args.port}...")
 
     # ワーカープロセスの起動
-    for _ in range(cpu_count):
-        p = multiprocessing.Process(
-            target=run_worker_process, args=(args.host, args.port, app_config)
-        )
-        p.start()
-        workers.append(p)
+    for port in target_ports:
+        print(f"Starting {workers_per_port} workers on port {port}...")
+
+        for _ in range(workers_per_port):
+            p = multiprocessing.Process(
+                target=run_worker_process,
+                args=(args.host, port, app_config),  # ここでループ中の port を渡す
+            )
+            p.start()
+            workers.append(p)
 
     # メインプロセスの待機ループ
     try:

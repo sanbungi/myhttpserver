@@ -1,8 +1,11 @@
 import asyncio
 import os
 import socket
+import ssl
 import traceback
 from functools import partial
+
+from icecream import ic
 
 from config_model import AppConfig
 
@@ -47,14 +50,24 @@ class HTTPServer:
         # 手動で設定したソケットを作成
         sock = self._create_socket()
 
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+        except Exception as e:
+            ic(f"SSL Load Error: {e}")
+            traceback.print_exc()
+            return
+
         # 既存のソケットを使ってサーバーを開始
-        server = await asyncio.start_server(
-            partial(handle_client, config=self.config),
-            sock=sock,
-        )
+        try:
+            server = await asyncio.start_server(
+                partial(handle_client, config=self.config), sock=sock, ssl=context
+            )
+            async with server:
+                await server.serve_forever()
+
+        except ssl.SSLError as e:
+            ic(f"SSL handshake faild with {self.host}: {e}")
 
         pid = os.getpid()
         print(f"[PID: {pid}] Serving on http://{self.host}:{self.port}")
-
-        async with server:
-            await server.serve_forever()
