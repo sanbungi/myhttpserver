@@ -5,8 +5,10 @@ import os
 import signal
 import sys
 
+import hcl
 from icecream import ic
 
+from config_model import AppConfig
 from src.server.core import HTTPServer
 
 
@@ -21,8 +23,8 @@ def parse_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="config.toml",
-        help="Configuration file path (default: config.toml)",
+        default="config/example.hcl",
+        help="Configuration file path (default: config/example.hcl)",
     )
     parser.add_argument(
         "--port",
@@ -52,8 +54,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_worker_process(host, port):
-    server = HTTPServer(host=host, port=port)
+def run_worker_process(host, port, config):
+    server = HTTPServer(host=host, port=port, config=config)
 
     try:
         asyncio.run(server.serve_forever())
@@ -63,6 +65,11 @@ def run_worker_process(host, port):
 
 def main():
     args = parse_args()
+
+    with open("config/example.hcl", "r") as fp:
+        raw_obj = hcl.load(fp)
+
+    app_config = AppConfig.load(raw_obj)
 
     # webrootを実態パスに
     webroot = os.path.abspath(args.webroot)
@@ -89,7 +96,7 @@ def main():
     # ワーカープロセスの起動
     for _ in range(cpu_count):
         p = multiprocessing.Process(
-            target=run_worker_process, args=(args.host, args.port)
+            target=run_worker_process, args=(args.host, args.port, app_config)
         )
         p.start()
         workers.append(p)

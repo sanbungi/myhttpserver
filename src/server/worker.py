@@ -1,10 +1,16 @@
 import asyncio
 
+from icecream import ic
+
+from config_model import AppConfig
+
 from .protocol import parse_request
 from .router import resolve_route
 
 
-async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+async def handle_client(
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, config: AppConfig
+):
     addr = writer.get_extra_info("peername")
     print(f"[+] Connection from {addr}")
 
@@ -21,6 +27,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 break
             except ConnectionResetError:
                 break
+
+            ic(config)
 
             # リクエスト解析
             request = parse_request(header_data)

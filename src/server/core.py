@@ -1,14 +1,18 @@
 import asyncio
 import os
 import socket
+from functools import partial
+
+from config_model import AppConfig
 
 from .worker import handle_client
 
 
 class HTTPServer:
-    def __init__(self, host="127.0.0.1", port=8080):
+    def __init__(self, host="127.0.0.1", port=8080, config: AppConfig = None):
         self.host = host
         self.port = port
+        self.config = config
 
     def _create_socket(self):
         """
@@ -42,7 +46,10 @@ class HTTPServer:
         sock = self._create_socket()
 
         # 既存のソケットを使ってサーバーを開始
-        server = await asyncio.start_server(handle_client, sock=sock)
+        server = await asyncio.start_server(
+            partial(handle_client, config=self.config),
+            sock=sock,
+        )
 
         pid = os.getpid()
         print(f"[PID: {pid}] Serving on http://{self.host}:{self.port}")
