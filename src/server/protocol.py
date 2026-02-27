@@ -1,3 +1,4 @@
+import traceback
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -7,15 +8,16 @@ class HTTPRequest:
     method: str
     path: str
     version: str
+    remote_addr: str
     headers: Dict[str, str] = field(default_factory=dict)
     body: bytes = b""
 
 
 class HTTPResponse:
-    def __init__(self, status: int = 200, body: bytes = b""):
+    def __init__(self, status: int = 200, body: bytes = b"", header: Dict = {}):
         self.status = status
         self.body = body
-        self.headers = {"Content-Type": "text/html; charset=utf-8"}
+        self.headers = {"Content-Type": "text/html; charset=utf-8"} | header
 
     def set_header(self, key: str, value: str):
         self.headers[key] = value
@@ -36,7 +38,7 @@ class HTTPResponse:
         return f"{status_line}{header_lines}\r\n".encode() + self.body
 
 
-def parse_request(data: bytes) -> Optional[HTTPRequest]:
+def parse_request(data: bytes, remote_addr: str) -> Optional[HTTPRequest]:
     try:
         # ヘッダーとボディを分離（今回は簡易的にヘッダーのみ解析）
         header_part = data.decode("utf-8", errors="ignore")
@@ -59,6 +61,13 @@ def parse_request(data: bytes) -> Optional[HTTPRequest]:
                 key, value = line.split(": ", 1)
                 headers[key] = value.strip()
 
-        return HTTPRequest(method=method, path=path, version=version, headers=headers)
+        return HTTPRequest(
+            method=method,
+            path=path,
+            version=version,
+            remote_addr=remote_addr,
+            headers=headers,
+        )
     except Exception:
+        traceback.print_exc()
         return None

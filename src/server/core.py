@@ -1,6 +1,7 @@
 import asyncio
 import os
 import socket
+import traceback
 from functools import partial
 
 from config_model import AppConfig
@@ -34,6 +35,7 @@ class HTTPServer:
             # 既にバインドされている場合などのエラーハンドリング
             print(f"Bind failed: {e}")
             sock.close()
+            traceback.print_exc()
             raise e
 
         return sock

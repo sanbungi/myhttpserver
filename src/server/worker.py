@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 
 from icecream import ic
 
@@ -11,8 +12,9 @@ from .router import resolve_route
 async def handle_client(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, config: AppConfig
 ):
-    addr = writer.get_extra_info("peername")
-    print(f"[+] Connection from {addr}")
+    peer = writer.get_extra_info("peername")
+    ip, port = peer
+    print(f"[+] Connection from ip={ip}, port={port}")
 
     try:
         while True:
@@ -31,12 +33,12 @@ async def handle_client(
             ic(config)
 
             # リクエスト解析
-            request = parse_request(header_data)
+            request = parse_request(header_data, ip)
             if not request:
                 break
 
             # ルーティング実行
-            response = await resolve_route(request)
+            response = await resolve_route(request, config)
 
             # Keep-Alive 判定
             conn_header = request.headers.get("Connection", "").lower()
@@ -68,4 +70,5 @@ async def handle_client(
             pass
         except Exception as e:
             # その他のエラーは念のためログに出す（デバッグ用）
+            traceback.print_exc()
             print(f"[-] Error during close: {e}")
