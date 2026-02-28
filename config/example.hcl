@@ -13,7 +13,7 @@ global {
 
 server "main-server" {
   host = "example.com"
-  port = 80
+  port = 8443
   root = "./html"
 
   tls {
@@ -82,3 +82,20 @@ server "main-server" {
     }
   }
 }
+
+server "redirect-server" {
+  host = "example.com"
+  port = 8000
+  
+  route "/" {
+    type = "redirect"
+    index = [""]
+
+    redirect {
+      url  = "https://192.168.0.108:8443$request_uri"
+      code = 301
+    }
+  }
+}
+
+

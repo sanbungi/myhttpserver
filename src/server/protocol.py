@@ -14,10 +14,16 @@ class HTTPRequest:
 
 
 class HTTPResponse:
-    def __init__(self, status: int = 200, body: bytes = b"", header: Dict = {}):
+    def __init__(
+        self,
+        status: int = 200,
+        body: bytes = b"",
+        header: Dict = {},
+        content_type="text/html; charset=utf-8",
+    ):
         self.status = status
         self.body = body
-        self.headers = {"Content-Type": "text/html; charset=utf-8"} | header
+        self.headers = {"Content-Type": content_type} | header
 
     def set_header(self, key: str, value: str):
         self.headers[key] = value

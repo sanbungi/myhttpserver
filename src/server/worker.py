@@ -4,14 +4,14 @@ from typing import Optional, Tuple
 
 from icecream import ic
 
-from config_model import AppConfig
+from config_model import ServerConfig
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import resolve_route
 
 
 async def handle_client(
-    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, config: AppConfig
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, config: ServerConfig
 ):
     peer = writer.get_extra_info("peername")
     ip, port = peer

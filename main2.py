@@ -8,7 +8,7 @@ import sys
 import hcl
 from icecream import ic
 
-from config_model import AppConfig
+from config_model import AppConfig, ServerConfig
 from src.server.core import HTTPServer
 
 
@@ -60,7 +60,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_worker_process(host, port, config):
+def run_worker_process(host, port, config: ServerConfig):
     server = HTTPServer(host=host, port=port, config=config)
 
     try:
@@ -104,14 +104,17 @@ def main():
 
     print(f"Starting server with {cpu_count} workers on port {args.port}...")
 
+    # ic(app_config)
+
     # ワーカープロセスの起動
-    for port in target_ports:
+    for server in app_config.servers:
+        port = server.port
         print(f"Starting {workers_per_port} workers on port {port}...")
 
         for _ in range(workers_per_port):
             p = multiprocessing.Process(
                 target=run_worker_process,
-                args=(args.host, port, app_config),  # ここでループ中の port を渡す
+                args=(args.host, port, server),  # ここでループ中の port を渡す
             )
             p.start()
             workers.append(p)

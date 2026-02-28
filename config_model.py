@@ -138,6 +138,9 @@ class ServerConfig:
         routes = []
         raw_routes = data.get("route", [])
 
+        if isinstance(raw_routes, dict):
+            raw_routes = [raw_routes]
+
         # pyhclの route は辞書のリストになっている
         for route_entry in raw_routes:
             for path, route_data in route_entry.items():

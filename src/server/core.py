@@ -7,13 +7,13 @@ from functools import partial
 
 from icecream import ic
 
-from config_model import AppConfig
+from config_model import ServerConfig
 
 from .worker import handle_client
 
 
 class HTTPServer:
-    def __init__(self, host="127.0.0.1", port=8080, config: AppConfig = None):
+    def __init__(self, host="127.0.0.1", port=8080, config: ServerConfig = None):
         self.host = host
         self.port = port
         self.config = config

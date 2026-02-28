@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 import httpx
 from icecream import ic
 
-from config_model import AppConfig
+from config_model import ServerConfig
 from FileCache import FileCache
 
 from .protocol import HTTPRequest, HTTPResponse
@@ -27,7 +27,7 @@ def read_file_sync(filepath):
     return None
 
 
-async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse:
+async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPResponse:
 
     request_path = Path(request.path)
 
@@ -35,8 +35,6 @@ async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse
         if request.method == "OPTIONS":
             ic("OPTIONS CALLS")
             return HTTPResponse(204, header={"Allow": "GET, HEAD, OPTIONS"})
-
-        server = config.servers[0]  # TODO
 
         # find_best_route が重い処理でないならそのままで良いが、
         # DBアクセス等があるなら async def にして await する必要がある
@@ -96,14 +94,16 @@ async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse
                 content = await cache.read(server_file_path, mode="rb")
             else:
                 # 【重要】awaitを追加
-                content = await cache.read(server_file_path, mode="r")
+                text = await cache.read(server_file_path, mode="r")
+                content = text.encode("utf-8")
 
             last_modify = get_last_modified(request.path)
 
             return HTTPResponse(
                 200,
-                str(content).encode("utf-8"),
+                content,
                 {"Last-Modified": last_modify, "Cache-Control": "max-age=3600"},
+                content_type,
             )
 
         # リバースプロキシ
@@ -150,8 +150,13 @@ async def resolve_route(request: HTTPRequest, config: AppConfig) -> HTTPResponse
         elif route.type == "redirect":
             ic("REDIRECT")
             ic(route.redirect)
+            redirect_url = route.redirect.url
+            if "$request_uri" in redirect_url:
+                redirect_url = redirect_url.replace("$request_uri", request.path)
+                ic(f"Rewrite URL {redirect_url}")
+
             return HTTPResponse(
-                status=route.redirect.code, header={"Location": route.redirect.url}
+                status=route.redirect.code, header={"Location": redirect_url}
             )
         else:
             return HTTPResponse(500)
