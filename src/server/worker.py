@@ -7,7 +7,7 @@ from icecream import ic
 from config_model import ServerConfig
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
-from .router import resolve_route
+from .router import generage_file_etag, resolve_route
 
 
 async def handle_client(
@@ -35,6 +35,10 @@ async def handle_client(
 
             # ルーティング実行
             response = await resolve_route(request, config)
+
+            response.set_header("Server", "MyHTTPServer/0.1")
+            etag = generage_file_etag(request.path)
+            response.set_header("ETag", f"{etag}")
 
             # Keep-Alive 判定
             conn_header = request.headers.get("Connection", "").lower()

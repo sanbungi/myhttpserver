@@ -36,8 +36,6 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
             ic("OPTIONS CALLS")
             return HTTPResponse(204, header={"Allow": "GET, HEAD, OPTIONS"})
 
-        # find_best_route が重い処理でないならそのままで良いが、
-        # DBアクセス等があるなら async def にして await する必要がある
         route = find_best_route(server, request_path)
         # ic(route)
 
@@ -47,13 +45,14 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
         if route.type == "static":
             if route.security:
                 ip = ipaddress.ip_address(request.remote_addr)
-                # ipaddressの計算はCPU処理なので同期のままでOK
                 network = ipaddress.ip_network(route.security.ip_allow[0], strict=False)
                 if ip in network:
                     ic(f"Access OK: {ip} in {network}")
                     pass
                 else:
                     return HTTPResponse(400)
+
+            etag = generage_file_etag(request.path)
 
             # check_cache_if_none_match もファイルIOがあるなら async 推奨
             cache_hit = check_cache_if_none_match(request)
@@ -69,7 +68,6 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 )
 
             if request_path == Path("/"):
-                # 【重要】cache.read を非同期メソッド(async def)に変更し、awaitする
                 content = await cache.read(f"{server.root}/{route.index[0]}", mode="r")
                 return HTTPResponse(
                     200,
@@ -82,18 +80,14 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
             if server_file_path.is_dir():
                 return HTTPResponse(status=301, header={"Location": "index.html"})
 
-            # os.path.exists は同期だが、高速なので許容されることが多い。
-            # 厳密にするなら aiofiles.os.path.exists 等を使うか run_in_executor を使う
             if not os.path.exists(server_file_path):
                 return HTTPResponse(404)
 
             content_type, is_binary = get_content_type(server_file_path)
 
             if is_binary:
-                # 【重要】awaitを追加
                 content = await cache.read(server_file_path, mode="rb")
             else:
-                # 【重要】awaitを追加
                 text = await cache.read(server_file_path, mode="r")
                 content = text.encode("utf-8")
 
