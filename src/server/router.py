@@ -37,15 +37,6 @@ def build_server_file_path(server_root: str, request_path: str) -> str:
     return candidate_path
 
 
-# ブロッキングなファイル読み込みを別スレッドで実行する関数
-def read_file_sync(filepath):
-    if os.path.exists(filepath) and os.path.isfile(filepath):
-        return cache.read(filepath, mode="rb")
-        with open(filepath, "rb") as f:
-            return f.read()
-    return None
-
-
 async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPResponse:
 
     request_path = normalize_request_path(request.path)
@@ -87,7 +78,9 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
 
             if request_path == "/":
                 index_path = os.path.join(server.root, route.index[0])
-                content = await cache.read(index_path, mode="r")
+                content = cache.get_cached(index_path, mode="r")
+                if content is cache.MISS:
+                    content = await cache.read_from_disk(index_path, mode="r")
                 return HTTPResponse(
                     200,
                     str(content).encode("utf-8"),
@@ -105,9 +98,13 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
             content_type, is_binary = get_content_type(server_file_path)
 
             if is_binary:
-                content = await cache.read(server_file_path, mode="rb")
+                content = cache.get_cached(server_file_path, mode="rb")
+                if content is cache.MISS:
+                    content = await cache.read_from_disk(server_file_path, mode="rb")
             else:
-                text = await cache.read(server_file_path, mode="r")
+                text = cache.get_cached(server_file_path, mode="r")
+                if text is cache.MISS:
+                    text = await cache.read_from_disk(server_file_path, mode="r")
                 content = text.encode("utf-8")
 
             last_modify = get_last_modified(request_path)
