@@ -1,6 +1,10 @@
+import gzip
 import traceback
 from dataclasses import dataclass, field
+from io import BytesIO
 from typing import Dict, Optional
+
+import zstandard as zstd
 
 
 @dataclass
@@ -24,9 +28,14 @@ class HTTPResponse:
         self.status = status
         self.body = body
         self.headers = {"Content-Type": content_type} | header
+        self.__compress = ""
 
     def set_header(self, key: str, value: str):
         self.headers[key] = value
+
+    def set_compress(self, compress_type):
+        if any(c in compress_type for c in ["gzip", "zst"]):
+            self.__compress = compress_type
 
     def to_bytes(self) -> bytes:
         # ステータス行
@@ -35,10 +44,23 @@ class HTTPResponse:
         # Content-Length は自動計算
         self.headers["Content-Length"] = str(len(self.body))
 
+        if self.__compress == "gzip":
+            out = BytesIO()
+            with gzip.GzipFile(fileobj=out, mode="wb") as f:
+                f.write(self.body)
+            self.body = out.getvalue()
+            self.headers["Content-Encoding"] = "gzip"
+        elif self.__compress == "zstd":
+            cctx = zstd.ZstdCompressor()
+            self.body = cctx.compress(self.body)
+            self.headers["Content-Encoding"] = "zstd"
+
         # ヘッダー結合
         header_lines = ""
         for k, v in self.headers.items():
             header_lines += f"{k}: {v}\r\n"
+
+        print(header_lines)
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + self.body
@@ -83,3 +105,13 @@ def parse_request(data: bytes, remote_addr: str) -> Optional[HTTPRequest]:
     except Exception:
         traceback.print_exc()
         return None
+
+
+# リストから優先される圧縮方式を取得
+def get_preferred_encoding(
+    accept_encoding: str, compression_priority: list[str]
+) -> str:
+    for encoding in compression_priority:
+        if encoding in accept_encoding:
+            return encoding
+    return ""

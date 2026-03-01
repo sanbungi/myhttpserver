@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 from icecream import ic
 
 from config_model import ServerConfig
+from utils import get_preferred_encoding
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import generage_file_etag, resolve_route
@@ -35,6 +36,10 @@ async def handle_client(
 
             # ルーティング実行
             response = await resolve_route(request, config)
+
+            accept_encoding = request.headers.get("Accept-Encoding", "")
+            encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+            response.set_compress(encoding)
 
             response.set_header("Server", "MyHTTPServer/0.1")
             etag = generage_file_etag(request.path)
