@@ -46,7 +46,7 @@ class HTTPResponse:
 
         if self.__compress == "gzip":
             out = BytesIO()
-            with gzip.GzipFile(fileobj=out, mode="wb") as f:
+            with gzip.GzipFile(fileobj=out, mode="wb", compresslevel=1) as f:
                 f.write(self.body)
             self.body = out.getvalue()
             self.headers["Content-Encoding"] = "gzip"
@@ -60,7 +60,7 @@ class HTTPResponse:
         for k, v in self.headers.items():
             header_lines += f"{k}: {v}\r\n"
 
-        print(header_lines)
+        # print(header_lines)
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + self.body

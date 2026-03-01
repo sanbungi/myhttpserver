@@ -43,7 +43,7 @@ async def handle_client(
 
             response.set_header("Server", "MyHTTPServer/0.1")
             etag = generage_file_etag(request.path)
-            response.set_header("ETag", f"{etag}")
+            response.set_header("ETag", f"{etag}-{encoding}")
 
             # Keep-Alive 判定
             conn_header = request.headers.get("Connection", "").lower()
