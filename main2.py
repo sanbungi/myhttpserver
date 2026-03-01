@@ -1,5 +1,9 @@
 import argparse
 import asyncio
+
+import uvloop
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import multiprocessing
 import os
 import signal

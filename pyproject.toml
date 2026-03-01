@@ -6,6 +6,7 @@ dependencies = [
     "aiofiles>=25.1.0",
     "httpx>=0.28.1",
     "pyhcl>=0.4.5",
+    "uvloop>=0.22.1",
     "xxhash>=3.6.0",
     "zstandard>=0.25.0",
 ]
