@@ -2,7 +2,6 @@ import ipaddress
 import os
 import traceback
 from email.utils import formatdate
-from pathlib import Path, PurePosixPath
 
 import httpx
 from icecream import ic
@@ -18,6 +17,26 @@ STATIC_DIR = os.path.join(os.getcwd(), "html")
 cache = FileCache()
 
 
+def normalize_request_path(raw_path: str) -> str:
+    path = (raw_path or "/").split("?", 1)[0].split("#", 1)[0]
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if path != "/":
+        while "//" in path:
+            path = path.replace("//", "/")
+        path = path.rstrip("/")
+    return path or "/"
+
+
+def build_server_file_path(server_root: str, request_path: str) -> str:
+    root_path = os.path.abspath(server_root)
+    relative_path = request_path.lstrip("/")
+    candidate_path = os.path.abspath(os.path.join(root_path, relative_path))
+    if os.path.commonpath([root_path, candidate_path]) != root_path:
+        raise PermissionError("path traversal detected")
+    return candidate_path
+
+
 # ブロッキングなファイル読み込みを別スレッドで実行する関数
 def read_file_sync(filepath):
     if os.path.exists(filepath) and os.path.isfile(filepath):
@@ -29,7 +48,7 @@ def read_file_sync(filepath):
 
 async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPResponse:
 
-    request_path = Path(request.path)
+    request_path = normalize_request_path(request.path)
 
     try:
         if request.method == "OPTIONS":
@@ -52,13 +71,12 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 else:
                     return HTTPResponse(400)
 
-            etag = generage_file_etag(request.path)
+            # etag = generage_file_etag(request.path)
 
-            # check_cache_if_none_match もファイルIOがあるなら async 推奨
-            cache_hit = check_cache_if_none_match(request)
+            cache_hit = check_cache_if_none_match(request, request_path)
             if cache_hit:
                 ic(cache_hit)
-                last_modify = get_last_modified(request.path)
+                last_modify = get_last_modified(request_path)
                 return HTTPResponse(
                     304,
                     header={
@@ -67,17 +85,18 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                     },
                 )
 
-            if request_path == Path("/"):
-                content = await cache.read(f"{server.root}/{route.index[0]}", mode="r")
+            if request_path == "/":
+                index_path = os.path.join(server.root, route.index[0])
+                content = await cache.read(index_path, mode="r")
                 return HTTPResponse(
                     200,
                     str(content).encode("utf-8"),
                 )
 
-            server_file_path = Path(server.root) / request_path.relative_to("/")
+            server_file_path = build_server_file_path(server.root, request_path)
             ic(server_file_path)
 
-            if server_file_path.is_dir():
+            if os.path.isdir(server_file_path):
                 return HTTPResponse(status=301, header={"Location": "index.html"})
 
             if not os.path.exists(server_file_path):
@@ -91,7 +110,7 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 text = await cache.read(server_file_path, mode="r")
                 content = text.encode("utf-8")
 
-            last_modify = get_last_modified(request.path)
+            last_modify = get_last_modified(request_path)
 
             return HTTPResponse(
                 200,
@@ -111,7 +130,7 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 async with httpx.AsyncClient() as client:
                     resp = await client.request(
                         method=request.method,
-                        url=str(f"http://localhost:1234/{request_path}"),
+                        url=f"http://localhost:1234{request_path}",
                         headers=send_header,
                         content=request.body,  # httpxでは body ではなく content (または data/json)
                         timeout=10.0,
@@ -165,8 +184,6 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
 
 # ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
 def get_content_type(file_path: str) -> tuple[str, bool]:
-    from pathlib import Path
-
     # 拡張子と（MIMEタイプ, is_binary）の対応表
     MIME_MAP = {
         ".html": ("text/html; charset=utf-8", False),
@@ -183,7 +200,7 @@ def get_content_type(file_path: str) -> tuple[str, bool]:
         ".pdf": ("application/pdf", True),
     }
 
-    ext = Path(file_path).suffix.lower()
+    ext = os.path.splitext(str(file_path))[1].lower()
     # 辞書にない場合はデフォルト値を返す (getメソッドの活用)
     return MIME_MAP.get(ext, ("application/octet-stream", True))
 
@@ -202,19 +219,17 @@ def get_last_modified(path):
 
 # routeing順序を考慮し、長い順から順番にマッチさせる。
 def find_best_route(server, request_path_str: str):
-    req_obj = PurePosixPath(request_path_str)
-
-    candidates = []
     for route in server.routes:
-        route_obj = PurePosixPath(route.path)
-
-        if req_obj.is_relative_to(route_obj):
-            candidates.append(route)
-
-    if not candidates:
-        return None
-
-    return max(candidates, key=lambda r: len(r.path))
+        route_path = route.path
+        if route_path == "/":
+            return route
+        if request_path_str == route_path:
+            return route
+        if request_path_str.startswith(route_path):
+            next_idx = len(route_path)
+            if len(request_path_str) > next_idx and request_path_str[next_idx] == "/":
+                return route
+    return None
 
 
 def generage_file_etag(path):
@@ -247,7 +262,7 @@ def get_preferred_encoding(
     return ""
 
 
-def check_cache_if_none_match(request: HTTPRequest):
+def check_cache_if_none_match(request: HTTPRequest, request_path: str):
     tag = request.headers.get("if-none-match", "")
     tag = tag.replace('"', "")
     if tag == "":
@@ -259,7 +274,7 @@ def check_cache_if_none_match(request: HTTPRequest):
     accept_encoding = request.headers.get("accept-encoding", "")
     encoding = get_preferred_encoding(accept_encoding, ["gzip"])
 
-    current_etag = generage_file_etag(request.path)
+    current_etag = generage_file_etag(request_path)
     if encoding:
         current_etag = f"{current_etag}-{encoding}"
 

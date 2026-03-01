@@ -2,6 +2,16 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
+def normalize_route_path(path: str) -> str:
+    if not path:
+        return "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if path != "/":
+        path = path.rstrip("/")
+    return path or "/"
+
+
 @dataclass
 class HeadersConfig:
     add: Dict[str, str] = field(default_factory=dict)  # set or add
@@ -107,7 +117,7 @@ class RouteConfig:
     @classmethod
     def from_dict(cls, path: str, data: Dict) -> "RouteConfig":
         return cls(
-            path=path,
+            path=normalize_route_path(path),
             type=data.get("type", "static"),
             index=data.get("index", []),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
@@ -145,6 +155,7 @@ class ServerConfig:
         for route_entry in raw_routes:
             for path, route_data in route_entry.items():
                 routes.append(RouteConfig.from_dict(path, route_data))
+        routes.sort(key=lambda r: len(r.path), reverse=True)
 
         return cls(
             name=name,
