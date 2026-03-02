@@ -100,7 +100,6 @@ def main():
 
     port_override = args.http_port if args.http_port is not None else args.port
     if port_override is not None:
-        # 既存テスト互換: 指定ポートで単一の静的サーバーを起動
         compat_server = ServerConfig(
             name="compat",
             host=args.host,
@@ -122,7 +121,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown_handler)
 
     cpu_count = max(1, app_config.global_settings.worker_processes)
-    workers_per_port = 1
+    workers_per_port = 4
     workers = []
 
     print(f"Starting server with {cpu_count} workers ...")
@@ -137,7 +136,7 @@ def main():
         for _ in range(workers_per_port):
             p = multiprocessing.Process(
                 target=run_worker_process,
-                args=(args.host, port, server),  # ここでループ中の port を渡す
+                args=(args.host, port, server),
             )
             p.start()
             workers.append(p)

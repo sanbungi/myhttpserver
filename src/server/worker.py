@@ -1,4 +1,5 @@
 import asyncio
+import re
 import traceback
 from typing import Optional, Tuple
 
@@ -7,7 +8,7 @@ from icecream import ic
 from config_model import ServerConfig
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
-from .router import generage_file_etag, get_preferred_encoding, resolve_route
+from .router import get_preferred_encoding, resolve_route
 
 
 async def handle_client(
@@ -31,21 +32,23 @@ async def handle_client(
             request = parse_request(header_part, ip)
             if not request:
                 break
+            request.body = full_body
             vetify_request(request)
 
-            # ルーティング実行
-            response = await resolve_route(request, config)
-
-            accept_encoding = request.headers.get("Accept-Encoding", "")
+            accept_encoding = _get_header_case_insensitive(
+                request.headers, "accept-encoding"
+            )
             encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+
+            # ルーティング実行
+            response = await resolve_route(request, config, encoding=encoding)
             response.set_compress(encoding)
 
             response.set_header("Server", "MyHTTPServer/0.1")
-            etag = generage_file_etag(request.path)
-            response.set_header("ETag", f"{etag}-{encoding}")
 
             # Keep-Alive 判定
-            conn_header = request.headers.get("Connection", "").lower()
+            conn_header = _get_header_case_insensitive(request.headers, "connection")
+            conn_header = conn_header.lower()
             if conn_header == "close":
                 should_close = True
                 response.set_header("Connection", "close")
@@ -85,76 +88,76 @@ async def handle_client(
 
 MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
 MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
+HEADER_TIMEOUT_SECONDS = 5.0
+BODY_TIMEOUT_SECONDS = 10.0
+
+
+def _get_header_case_insensitive(headers: dict, name: str, default: str = "") -> str:
+    if name in headers:
+        return headers[name]
+
+    lowered_name = name.lower()
+    for key, value in headers.items():
+        if key.lower() == lowered_name:
+            return value
+    return default
+
+
+def _parse_content_length(header_part: bytes) -> int:
+    for line in header_part.split(b"\r\n"):
+        if line[:15].lower() != b"content-length:":
+            continue
+
+        raw_value = line[15:].strip()
+        if not raw_value:
+            raise HttpError(400)
+
+        try:
+            content_length = int(raw_value)
+        except ValueError as e:
+            raise HttpError(400) from e
+
+        if content_length < 0:
+            raise HttpError(400)
+        return content_length
+
+    return 0
 
 
 async def safe_load(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, peer_ip: str
 ) -> Optional[Tuple[bytes, bytes]]:
-    buffer = b""
-    header_data = None
-
-    # ヘッダー確認
     try:
-        while True:
-            # バッファサイズチェック
-            if len(buffer) > MAX_HEADER_SIZE:
-                print(f"[-] Error: Header too large from {peer_ip}")
-                raise HttpError(431)
-
-            if b"\r\n\r\n" in buffer:
-                header_data = buffer
-                break
-
-            # タイムアウト付きで読み込み
-            chunk = await asyncio.wait_for(reader.read(4096), timeout=5.0)
-            if not chunk:
-                return None
-            buffer += chunk
-
-    except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+        async with asyncio.timeout(HEADER_TIMEOUT_SECONDS):
+            header_block = await reader.readuntil(b"\r\n\r\n")
+    except asyncio.LimitOverrunError:
+        print(f"[-] Error: Header too large from {peer_ip}")
+        raise HttpError(431)
+    except (TimeoutError, asyncio.IncompleteReadError):
         return None
     except ConnectionResetError:
         return None
 
-    # ヘッダーとボディの残りに分割
-    header_part, body_start = header_data.split(b"\r\n\r\n", 1)
+    if len(header_block) > MAX_HEADER_SIZE:
+        print(f"[-] Error: Header too large from {peer_ip}")
+        raise HttpError(431)
 
-    # Content-Length 解析とチェック
-    try:
-        header_text = header_part.decode("utf-8", errors="ignore")
-    except Exception:
-        raise HttpError(400)
-
-    content_length = 0
-    for line in header_text.split("\r\n"):
-        if line.lower().startswith("content-length:"):
-            try:
-                content_length = int(line.split(":")[1].strip())
-            except ValueError:
-                pass
-            break
+    header_part = header_block[:-4]
+    content_length = _parse_content_length(header_part)
 
     # 413 Payload Too Large
-    if content_length > MAX_BODY_SIZE:
+    if content_length >= MAX_BODY_SIZE:
         print(f"[-] Error: Body too large ({content_length} bytes) from {peer_ip}")
         raise HttpError(413)
 
-    # ボディ読み込み ---
-    full_body = body_start
-    remaining_bytes = content_length - len(body_start)
+    if content_length == 0:
+        return header_part, b""
 
-    if remaining_bytes > 0:
-        try:
-            body_chunk = await asyncio.wait_for(
-                reader.readexactly(remaining_bytes), timeout=10.0
-            )
-            full_body += body_chunk
-        except (
-            asyncio.TimeoutError,
-            asyncio.IncompleteReadError,
-            ConnectionResetError,
-        ):
-            return None
+    try:
+        async with asyncio.timeout(BODY_TIMEOUT_SECONDS):
+            full_body = await reader.readexactly(content_length)
+    except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
+        return None
 
     return header_part, full_body
 
@@ -172,19 +175,20 @@ HTTP_METHODS = {
 }
 
 
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
 def contains_control_chars(s: str) -> bool:
-    return any(ord(c) < 32 or ord(c) == 127 for c in s)
+    return _CONTROL_CHAR_RE.search(s) is not None
 
 
 def vetify_request(request: HTTPRequest):
-    ic(request)
-
     headers = request.headers
-    hosts = [headers["Host"]] if "Host" in headers else []
-    if len(hosts) == 0:
+
+    if request.version == "HTTP/1.1" and not _get_header_case_insensitive(
+        headers, "host"
+    ):
         raise HttpError(400, "MISSING_HOST")
-    if len(hosts) > 1:
-        raise HttpError(400, "DUPLICATE_HOST")
 
     if len(request.path) > 255:
         raise HttpError(414, "REQUEST_URL_TOO_LONG")
@@ -195,13 +199,10 @@ def vetify_request(request: HTTPRequest):
     if request.method not in HTTP_METHODS:
         raise HttpError(400, "INVALID_HTTP_METHOD")
 
-    if any(contains_control_chars(h) for h in request.headers):
-        raise HttpError(
-            400,
-            "DISALLOW_CONTAILS_CONTROL_CHARCTER",
-        )
+    for header_name, header_value in request.headers.items():
+        if contains_control_chars(header_name) or contains_control_chars(header_value):
+            raise HttpError(400, "DISALLOW_CONTAILS_CONTROL_CHARCTER")
 
-    ALLOW_METHOD = ["GET", "HEAD", "OPTIONS"]
-    if not any(request.method in s for s in ALLOW_METHOD):
-        ic("NOT ALLOW !!!")
+    allow_methods = {"GET", "HEAD", "OPTIONS"}
+    if request.method not in allow_methods:
         raise HttpError(405, "METHOD NOT ALLOWED")

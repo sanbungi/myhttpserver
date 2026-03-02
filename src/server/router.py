@@ -1,8 +1,9 @@
 import ipaddress
 import os
+import stat as statmod
 import traceback
 from email.utils import formatdate
-from urllib.parse import urlsplit
+from typing import Optional
 
 import httpx
 from icecream import ic
@@ -13,39 +14,135 @@ from FileCache import FileCache
 from .protocol import HTTPRequest, HTTPResponse
 
 # 静的ファイルのルートディレクトリ
-STATIC_DIR = os.path.join(os.getcwd(), "html")
+_CWD = os.getcwd()
+STATIC_DIR = (_CWD[:-1] if _CWD.endswith("/") and _CWD != "/" else _CWD) + "/html"
+_FILE_META_CACHE: dict[str, tuple[int, int, int, str, str]] = {}
 
 cache = FileCache()
+
+
+def _strip_trailing_slash(path: str) -> str:
+    if path.endswith("/") and path != "/":
+        return path[:-1]
+    return path
+
+
+def _join_root_and_relative(root: str, relative: str) -> str:
+    root_path = _strip_trailing_slash(root)
+    rel_path = relative.lstrip("/")
+
+    if root_path == "/":
+        return "/" + rel_path
+    if rel_path == "":
+        return root_path
+    return root_path + "/" + rel_path
+
+
+def _extract_absolute_uri_path(path: str) -> str:
+    scheme_idx = path.find("://")
+    if scheme_idx == -1:
+        return path
+
+    path_idx = path.find("/", scheme_idx + 3)
+    if path_idx == -1:
+        return "/"
+    return path[path_idx:]
+
+
+def _get_file_meta(
+    file_path: str, stat_result=None
+) -> Optional[tuple[os.stat_result, str, str]]:
+    try:
+        st = stat_result if stat_result is not None else os.stat(file_path)
+    except (FileNotFoundError, PermissionError):
+        return None
+
+    mtime_ns = st.st_mtime_ns
+    size = st.st_size
+    mode = st.st_mode
+
+    cached = _FILE_META_CACHE.get(file_path)
+    if cached and cached[0] == mtime_ns and cached[1] == size and cached[2] == mode:
+        return st, cached[3], cached[4]
+
+    last_modified = formatdate(st.st_mtime, usegmt=True)
+    etag_base = f"{mtime_ns:x}-{size:x}"
+    _FILE_META_CACHE[file_path] = (mtime_ns, size, mode, last_modified, etag_base)
+    return st, last_modified, etag_base
 
 
 def normalize_request_path(raw_path: str) -> str:
     path = raw_path or "/"
 
-    # RFC 2616 Section 5.1.2: absoluteURI を受け取った場合は path 部分を使う
     if "://" in path:
-        parsed = urlsplit(path)
-        path = parsed.path or "/"
+        path = _extract_absolute_uri_path(path)
 
-    path = path.split("?", 1)[0].split("#", 1)[0]
+    query_idx = path.find("?")
+    if query_idx != -1:
+        path = path[:query_idx]
+
+    fragment_idx = path.find("#")
+    if fragment_idx != -1:
+        path = path[:fragment_idx]
+
     if not path.startswith("/"):
-        path = f"/{path}"
-    if path != "/":
-        while "//" in path:
-            path = path.replace("//", "/")
-        path = path.rstrip("/")
-    return path or "/"
+        path = "/" + path
+
+    segments = []
+    for segment in path.split("/"):
+        if segment == "":
+            continue
+        segments.append(segment)
+
+    if not segments:
+        return "/"
+    return "/" + "/".join(segments)
 
 
 def build_server_file_path(server_root: str, request_path: str) -> str:
-    root_path = os.path.abspath(server_root)
-    relative_path = request_path.lstrip("/")
-    candidate_path = os.path.abspath(os.path.join(root_path, relative_path))
-    if os.path.commonpath([root_path, candidate_path]) != root_path:
-        raise PermissionError("path traversal detected")
-    return candidate_path
+    path = request_path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+
+    safe_segments = []
+    for segment in path.split("/"):
+        if segment == "" or segment == ".":
+            continue
+        if segment == "..":
+            raise PermissionError("path traversal detected")
+        safe_segments.append(segment)
+
+    return _join_root_and_relative(server_root, "/".join(safe_segments))
 
 
-async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPResponse:
+def _get_header_case_insensitive(headers: dict, name: str, default: str = "") -> str:
+    if name in headers:
+        return headers[name]
+
+    lowered_name = name.lower()
+    for key, value in headers.items():
+        if key.lower() == lowered_name:
+            return value
+    return default
+
+
+def _join_etag_with_encoding(base_etag: Optional[str], encoding: str) -> Optional[str]:
+    if not base_etag:
+        return None
+    if encoding:
+        return f"{base_etag}-{encoding}"
+    return base_etag
+
+
+def _format_etag_header(etag: Optional[str]) -> Optional[str]:
+    if not etag:
+        return None
+    return f'"{etag}"'
+
+
+async def resolve_route(
+    request: HTTPRequest, server: ServerConfig, encoding: str = ""
+) -> HTTPResponse:
 
     request_path = normalize_request_path(request.path)
 
@@ -70,38 +167,34 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 else:
                     return HTTPResponse(400)
 
-            # etag = generage_file_etag(request.path)
-
-            cache_hit = check_cache_if_none_match(request, request_path)
-            if cache_hit:
-                ic(cache_hit)
-                last_modify = get_last_modified(request_path)
-                return HTTPResponse(
-                    304,
-                    header={
-                        "Last-Modified": last_modify,
-                        "Cache-Control": "max-age=3600",
-                    },
-                )
-
             if request_path == "/":
-                index_path = os.path.join(server.root, route.index[0])
-                content = cache.get_cached(index_path, mode="r")
-                if content is cache.MISS:
-                    content = await cache.read_from_disk(index_path, mode="r")
-                return HTTPResponse(
-                    200,
-                    str(content).encode("utf-8"),
+                index_file = route.index[0] if route.index else "index.html"
+                server_file_path = build_server_file_path(
+                    server.root, "/" + index_file.lstrip("/")
                 )
+            else:
+                server_file_path = build_server_file_path(server.root, request_path)
 
-            server_file_path = build_server_file_path(server.root, request_path)
-            ic(server_file_path)
+            meta = _get_file_meta(server_file_path)
+            if meta is None:
+                return HTTPResponse(404)
 
-            if os.path.isdir(server_file_path):
+            stat_result, last_modify, base_etag = meta
+            if statmod.S_ISDIR(stat_result.st_mode):
                 return HTTPResponse(status=301, header={"Location": "index.html"})
 
-            if not os.path.exists(server_file_path):
-                return HTTPResponse(404)
+            current_etag = _join_etag_with_encoding(base_etag, encoding)
+            etag_header = _format_etag_header(current_etag)
+
+            cache_hit = check_cache_if_none_match(request, current_etag)
+            if cache_hit:
+                headers = {
+                    "Last-Modified": last_modify,
+                    "Cache-Control": "max-age=3600",
+                }
+                if etag_header:
+                    headers["ETag"] = etag_header
+                return HTTPResponse(304, header=headers)
 
             content_type, is_binary = get_content_type(server_file_path)
 
@@ -115,29 +208,34 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                     text = await cache.read_from_disk(server_file_path, mode="r")
                 content = text.encode("utf-8")
 
-            last_modify = get_last_modified(request_path)
+            response_headers = {
+                "Last-Modified": last_modify,
+                "Cache-Control": "max-age=3600",
+            }
+            if etag_header:
+                response_headers["ETag"] = etag_header
 
             return HTTPResponse(
                 200,
                 content,
-                {"Last-Modified": last_modify, "Cache-Control": "max-age=3600"},
+                response_headers,
                 content_type,
             )
 
         # リバースプロキシ
         elif route.type == "proxy":
             send_header = dict(request.headers)
-            send_header.pop("host", None)
-            send_header.pop("Host", None)
+            for header_name in list(send_header):
+                if header_name.lower() == "host":
+                    send_header.pop(header_name)
 
-            # 【重要】requests を httpx に置き換え
             try:
                 async with httpx.AsyncClient() as client:
                     resp = await client.request(
                         method=request.method,
                         url=f"http://localhost:1234{request_path}",
                         headers=send_header,
-                        content=request.body,  # httpxでは body ではなく content (または data/json)
+                        content=request.body,
                         timeout=10.0,
                     )
 
@@ -148,9 +246,7 @@ async def resolve_route(request: HTTPRequest, server: ServerConfig) -> HTTPRespo
                 return HTTPResponse(
                     resp.status_code,
                     resp.content,  # bytes
-                    dict(
-                        resp.headers
-                    ),  # httpxのheadersは辞書風オブジェクトなので変換推奨
+                    dict(resp.headers),
                 )
             except httpx.RequestError as e:
                 ic(f"Upstream error: {e}")
@@ -205,21 +301,18 @@ def get_content_type(file_path: str) -> tuple[str, bool]:
         ".pdf": ("application/pdf", True),
     }
 
-    ext = os.path.splitext(str(file_path))[1].lower()
+    dot_idx = file_path.rfind(".")
+    ext = file_path[dot_idx:].lower() if dot_idx != -1 else ""
     # 辞書にない場合はデフォルト値を返す (getメソッドの活用)
     return MIME_MAP.get(ext, ("application/octet-stream", True))
 
 
-def get_last_modified(path):
-    path = "html" + path
-    try:
-        stat = os.stat(path)
-        last_modified = formatdate(stat.st_mtime, usegmt=True)
-        return last_modified
-
-    except (FileNotFoundError, PermissionError):
-        traceback.print_exc()
+def get_last_modified(path, absolute_path: bool = False, stat_result=None):
+    full_path = path if absolute_path else _join_root_and_relative(STATIC_DIR, path)
+    meta = _get_file_meta(full_path, stat_result=stat_result)
+    if meta is None:
         return None
+    return meta[1]
 
 
 # routeing順序を考慮し、長い順から順番にマッチさせる。
@@ -242,24 +335,12 @@ def find_best_route(server, request_path_str: str):
     return best
 
 
-def generage_file_etag(path):
-    path = "html" + path
-    ic(path)
-    try:
-        stat = os.stat(path)
-
-        mtime = int(stat.st_mtime)
-        size = stat.st_size
-        ic(mtime)
-        ic(size)
-
-        mtime_hex = hex(mtime)[2:]
-        size_hex = hex(size)[2:]
-
-        return f"{mtime_hex}-{size_hex}"
-    except (FileNotFoundError, PermissionError):
-        traceback.print_exc()
+def generage_file_etag(path, absolute_path: bool = False, stat_result=None):
+    full_path = path if absolute_path else _join_root_and_relative(STATIC_DIR, path)
+    meta = _get_file_meta(full_path, stat_result=stat_result)
+    if meta is None:
         return None
+    return meta[2]
 
 
 # リストから優先される圧縮方式を取得
@@ -272,26 +353,24 @@ def get_preferred_encoding(
     return ""
 
 
-def check_cache_if_none_match(request: HTTPRequest, request_path: str):
-    tag = request.headers.get("if-none-match", "")
-    tag = tag.replace('"', "")
-    if tag == "":
+def check_cache_if_none_match(request: HTTPRequest, current_etag: Optional[str]):
+    if not current_etag:
         return False
 
-    ic(tag)
+    raw_tag = _get_header_case_insensitive(request.headers, "if-none-match")
+    if not raw_tag:
+        return False
 
-    # 圧縮化を同じロジックで判定
-    accept_encoding = request.headers.get("accept-encoding", "")
-    encoding = get_preferred_encoding(accept_encoding, ["gzip"])
-
-    current_etag = generage_file_etag(request_path)
-    if encoding:
-        current_etag = f"{current_etag}-{encoding}"
-
-    ic(current_etag)
-    ic(tag)
-
-    if current_etag == tag:
+    raw_tag = raw_tag.strip()
+    if raw_tag == "*":
         return True
+
+    for tag in raw_tag.split(","):
+        candidate = tag.strip()
+        if candidate.startswith("W/"):
+            candidate = candidate[2:].strip()
+        candidate = candidate.strip('"')
+        if current_etag == candidate:
+            return True
 
     return False
