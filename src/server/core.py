@@ -27,8 +27,7 @@ class HTTPServer:
         # タイムアウト待ちのポートを再利用できるようにする
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-        # 【重要】複数のプロセスが同じポートをバインドできるようにする
-        # Linux (kernel >= 3.9) や macOS で利用可能
+        # 同じポートで複数起動できるようにフラグをセット、Linux (kernel >= 3.9) や macOS で利用可能
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 

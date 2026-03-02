@@ -1,5 +1,5 @@
 global {
-  worker_processes = 4
+  worker_processes = 8
   max_connections  = 1024
   timeout_keepalive = "65s"
   timeout = "30s"
@@ -17,7 +17,7 @@ server "main-server" {
   root = "./html"
 
   tls {
-    enabled = false
+    enabled = true
     cert    = "/etc/certs/example.com.crt"
     key     = "/etc/certs/example.com.key"
     min_version = "TLS1.2"
