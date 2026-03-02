@@ -2,6 +2,7 @@ import ipaddress
 import os
 import traceback
 from email.utils import formatdate
+from urllib.parse import urlsplit
 
 import httpx
 from icecream import ic
@@ -18,7 +19,14 @@ cache = FileCache()
 
 
 def normalize_request_path(raw_path: str) -> str:
-    path = (raw_path or "/").split("?", 1)[0].split("#", 1)[0]
+    path = raw_path or "/"
+
+    # RFC 2616 Section 5.1.2: absoluteURI を受け取った場合は path 部分を使う
+    if "://" in path:
+        parsed = urlsplit(path)
+        path = parsed.path or "/"
+
+    path = path.split("?", 1)[0].split("#", 1)[0]
     if not path.startswith("/"):
         path = f"/{path}"
     if path != "/":
@@ -216,17 +224,22 @@ def get_last_modified(path):
 
 # routeing順序を考慮し、長い順から順番にマッチさせる。
 def find_best_route(server, request_path_str: str):
+    best = None
     for route in server.routes:
         route_path = route.path
+        matched = False
         if route_path == "/":
-            return route
-        if request_path_str == route_path:
-            return route
-        if request_path_str.startswith(route_path):
+            matched = True
+        elif request_path_str == route_path:
+            matched = True
+        elif request_path_str.startswith(route_path):
             next_idx = len(route_path)
             if len(request_path_str) > next_idx and request_path_str[next_idx] == "/":
-                return route
-    return None
+                matched = True
+
+        if matched and (best is None or len(route_path) > len(best.path)):
+            best = route
+    return best
 
 
 def generage_file_etag(path):

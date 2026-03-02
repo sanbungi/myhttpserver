@@ -12,7 +12,7 @@ import sys
 import hcl
 from icecream import ic
 
-from config_model import AppConfig, ServerConfig
+from config_model import AppConfig, RouteConfig, ServerConfig
 from src.server.core import HTTPServer
 
 
@@ -33,8 +33,15 @@ def parse_args():
     parser.add_argument(
         "--port",
         type=int,
-        default=80,
-        help="HTTP port (default: 80)",
+        default=None,
+        help="Override HTTP port",
+    )
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        dest="http_port",
+        default=None,
+        help="Backward-compatible alias for --port",
     )
     parser.add_argument(
         "--enable-https",
@@ -76,7 +83,7 @@ def run_worker_process(host, port, config: ServerConfig):
 def main():
     args = parse_args()
 
-    with open("config/example.hcl", "r") as fp:
+    with open(args.config, "r") as fp:
         raw_obj = hcl.load(fp)
 
     app_config = AppConfig.load(raw_obj)
@@ -91,6 +98,20 @@ def main():
         print("Disable IC")
         ic.disable()
 
+    port_override = args.http_port if args.http_port is not None else args.port
+    if port_override is not None:
+        # 既存テスト互換: 指定ポートで単一の静的サーバーを起動
+        compat_server = ServerConfig(
+            name="compat",
+            host=args.host,
+            port=port_override,
+            root=webroot,
+            routes=[RouteConfig(path="/", type="static", index=["index.html"])],
+        )
+        print(f"Starting compatibility server on {args.host}:{port_override} ...")
+        run_worker_process(args.host, port_override, compat_server)
+        return
+
     def shutdown_handler(signum, frame):
         ic("Server shutdown...")
 
@@ -100,13 +121,11 @@ def main():
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-    target_ports = [8000]
-
-    cpu_count = 4
-    workers_per_port = max(1, cpu_count // len(target_ports))
+    cpu_count = max(1, app_config.global_settings.worker_processes)
+    workers_per_port = 1
     workers = []
 
-    print(f"Starting server with {cpu_count} workers on port {args.port}...")
+    print(f"Starting server with {cpu_count} workers ...")
 
     # ic(app_config)
 
