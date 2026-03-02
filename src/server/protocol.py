@@ -107,13 +107,3 @@ def parse_request(data: bytes, remote_addr: str) -> Optional[HTTPRequest]:
     except Exception:
         traceback.print_exc()
         return None
-
-
-# リストから優先される圧縮方式を取得
-def get_preferred_encoding(
-    accept_encoding: str, compression_priority: list[str]
-) -> str:
-    for encoding in compression_priority:
-        if encoding in accept_encoding:
-            return encoding
-    return ""

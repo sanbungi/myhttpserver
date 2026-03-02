@@ -5,10 +5,9 @@ from typing import Optional, Tuple
 from icecream import ic
 
 from config_model import ServerConfig
-from utils import get_preferred_encoding
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
-from .router import generage_file_etag, resolve_route
+from .router import generage_file_etag, get_preferred_encoding, resolve_route
 
 
 async def handle_client(
