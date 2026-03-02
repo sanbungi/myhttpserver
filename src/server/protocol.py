@@ -41,19 +41,21 @@ class HTTPResponse:
         # ステータス行
         status_line = f"HTTP/1.1 {self.status} OK\r\n"
 
-        # Content-Length は自動計算
-        self.headers["Content-Length"] = str(len(self.body))
+        response_body = self.body
 
         if self.__compress == "gzip":
             out = BytesIO()
             with gzip.GzipFile(fileobj=out, mode="wb", compresslevel=1) as f:
-                f.write(self.body)
-            self.body = out.getvalue()
+                f.write(response_body)
+            response_body = out.getvalue()
             self.headers["Content-Encoding"] = "gzip"
         elif self.__compress == "zstd":
             cctx = zstd.ZstdCompressor()
-            self.body = cctx.compress(self.body)
+            response_body = cctx.compress(response_body)
             self.headers["Content-Encoding"] = "zstd"
+
+        # Content-Length は圧縮後のボディ長で返す
+        self.headers["Content-Length"] = str(len(response_body))
 
         # ヘッダー結合
         header_lines = ""
@@ -63,7 +65,7 @@ class HTTPResponse:
         # print(header_lines)
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
-        return f"{status_line}{header_lines}\r\n".encode() + self.body
+        return f"{status_line}{header_lines}\r\n".encode() + response_body
 
 
 @dataclass
