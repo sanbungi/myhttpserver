@@ -17,7 +17,7 @@ server "main-server" {
   root = "./html"
 
   tls {
-    enabled = true
+    enabled = false
     cert    = "/etc/certs/example.com.crt"
     key     = "/etc/certs/example.com.key"
     min_version = "TLS1.2"

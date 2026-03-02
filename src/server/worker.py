@@ -16,7 +16,7 @@ async def handle_client(
 ):
     peer = writer.get_extra_info("peername")
     ip, port = peer
-    print(f"[+] Connection from ip={ip}, port={port}")
+    # print(f"[+] Connection from ip={ip}, port={port}")
 
     try:
         while True:
