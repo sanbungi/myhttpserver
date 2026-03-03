@@ -15,6 +15,12 @@ HOST = "localhost"
 PORT = 8001
 
 
+@pytest.fixture(autouse=True)
+def _configure_socket_target(server_process, server_port):
+    global PORT
+    PORT = server_port
+
+
 def _make_socket():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))

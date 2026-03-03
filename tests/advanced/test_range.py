@@ -11,12 +11,20 @@ import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
+HOST = "localhost"
+PORT = 8001
+
+
+@pytest.fixture(autouse=True)
+def _configure_socket_target(server_process, server_port):
+    global PORT
+    PORT = server_port
 
 
 def _make_socket():
     """テスト用ソケットを作成"""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("localhost", 8001))
+    s.connect((HOST, PORT))
     s.settimeout(REQUEST_TIMEOUT)
     return s
 
