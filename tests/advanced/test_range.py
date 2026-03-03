@@ -4,8 +4,9 @@ Rangeリクエストとパーシャルコンテンツのテスト
 バイトレンジリクエスト、206 Partial Content、416 Range Not Satisfiable、
 Content-Rangeヘッダー、マルチレンジリクエストなどをテストする。
 """
-import socket
+
 import re
+import socket
 
 import pytest
 import requests
@@ -71,6 +72,7 @@ def _get_file_content(server_url, path):
 # =============================================================================
 # 基本的なバイトレンジリクエスト（Section 14.35.1）
 # =============================================================================
+
 
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestBasicByteRange:
@@ -149,6 +151,7 @@ class TestBasicByteRange:
 # 206 Partial Content レスポンスの検証（Section 10.2.7）
 # =============================================================================
 
+
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestPartialContentResponse:
     """Section 10.2.7: 206レスポンスの形式検証"""
@@ -218,6 +221,7 @@ class TestPartialContentResponse:
 # 416 Range Not Satisfiable（Section 10.4.17）
 # =============================================================================
 
+
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeNotSatisfiable:
     """Section 10.4.17: 満たせないレンジリクエスト"""
@@ -262,6 +266,7 @@ class TestRangeNotSatisfiable:
 # Accept-Ranges ヘッダー（Section 14.5）
 # =============================================================================
 
+
 class TestAcceptRanges:
     """Section 14.5: Accept-Rangesヘッダー"""
 
@@ -292,6 +297,7 @@ class TestAcceptRanges:
 # レンジリクエストとHEADメソッド
 # =============================================================================
 
+
 class TestRangeWithHead:
     """RangeリクエストとHEADメソッドの組み合わせ"""
 
@@ -319,6 +325,7 @@ class TestRangeWithHead:
 # ソケットレベルでのRangeリクエスト
 # =============================================================================
 
+
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeWithSocket:
     """生ソケットでのRangeリクエストテスト"""
@@ -328,10 +335,7 @@ class TestRangeWithSocket:
         s = _make_socket()
         try:
             request = (
-                b"GET /test.txt HTTP/1.1\r\n"
-                b"Host: localhost\r\n"
-                b"Range: bytes=0-4\r\n"
-                b"\r\n"
+                b"GET /test.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-4\r\n\r\n"
             )
             s.send(request)
             response = _recv_all(s)
@@ -348,10 +352,7 @@ class TestRangeWithSocket:
         s = _make_socket()
         try:
             request = (
-                b"GET /test.txt HTTP/1.1\r\n"
-                b"Host: localhost\r\n"
-                b"Range: bytes=-3\r\n"
-                b"\r\n"
+                b"GET /test.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=-3\r\n\r\n"
             )
             s.send(request)
             response = _recv_all(s)
@@ -368,10 +369,7 @@ class TestRangeWithSocket:
         s = _make_socket()
         try:
             request = (
-                b"GET /test.txt HTTP/1.1\r\n"
-                b"Host: localhost\r\n"
-                b"Range: bytes=5-\r\n"
-                b"\r\n"
+                b"GET /test.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-\r\n\r\n"
             )
             s.send(request)
             response = _recv_all(s)
@@ -386,6 +384,7 @@ class TestRangeWithSocket:
 # =============================================================================
 # マルチレンジリクエスト
 # =============================================================================
+
 
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestMultiRangeRequest:
@@ -421,6 +420,7 @@ class TestMultiRangeRequest:
 # =============================================================================
 # Rangeリクエストのエッジケース
 # =============================================================================
+
 
 class TestRangeEdgeCases:
     """Rangeリクエストのエッジケース"""
@@ -499,10 +499,7 @@ class TestRangeEdgeCases:
         """空ファイルへのレンジリクエスト"""
         # 通常のテスト用ファイルが存在しない場合を想定
         request = (
-            b"GET /test.txt HTTP/1.1\r\n"
-            b"Host: localhost\r\n"
-            b"Range: bytes=0-0\r\n"
-            b"\r\n"
+            b"GET /test.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-0\r\n\r\n"
         )
         http_socket.send(request)
         response = _recv_all(http_socket)
@@ -542,6 +539,7 @@ class TestRangeEdgeCases:
 # =============================================================================
 # レンジリクエストとキャッシュ
 # =============================================================================
+
 
 @pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeAndCaching:

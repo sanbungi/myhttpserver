@@ -3,9 +3,9 @@
 Accept, Accept-Charset, Accept-Encoding, Accept-Language ヘッダーの
 処理とネゴシエーション動作をテストする。
 """
+
 import socket
 
-import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
@@ -28,6 +28,7 @@ def _recv_all(sock, timeout=3):
 # =============================================================================
 # Accept ヘッダー（Section 14.1）
 # =============================================================================
+
 
 class TestAcceptHeader:
     """Section 14.1: Acceptヘッダーによるメディアタイプネゴシエーション"""
@@ -74,12 +75,13 @@ class TestAcceptHeader:
         """複数のAcceptタイプ"""
         resp = requests.get(
             f"{server}/index.html",
-            headers={"Accept": "text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8"},
+            headers={
+                "Accept": "text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8"
+            },
             timeout=REQUEST_TIMEOUT,
         )
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="Accept header content negotiation not implemented")
     def test_accept_incompatible_type(self, server):
         """サーバーが提供できないContent-Type
 
@@ -103,6 +105,7 @@ class TestAcceptHeader:
 # =============================================================================
 # Accept-Charset ヘッダー（Section 14.2）
 # =============================================================================
+
 
 class TestAcceptCharset:
     """Section 14.2: Accept-Charsetヘッダーによる文字セットネゴシエーション"""
@@ -129,7 +132,6 @@ class TestAcceptCharset:
         )
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="Accept-Charset content negotiation not implemented")
     def test_accept_charset_iso_8859(self, server):
         """Accept-Charset: iso-8859-1（サーバーがutf-8のみの場合）"""
         resp = requests.get(
@@ -153,6 +155,7 @@ class TestAcceptCharset:
 # =============================================================================
 # Accept-Encoding ヘッダー（Section 14.3）
 # =============================================================================
+
 
 class TestAcceptEncoding:
     """Section 14.3: Accept-Encodingヘッダーによるエンコーディングネゴシエーション"""
@@ -228,7 +231,6 @@ class TestAcceptEncoding:
         )
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="Accept-Encoding content negotiation not implemented")
     def test_accept_encoding_unsupported(self, server):
         """サポートしないエンコーディングのみを指定"""
         resp = requests.get(
@@ -243,6 +245,7 @@ class TestAcceptEncoding:
 # =============================================================================
 # Accept-Language ヘッダー（Section 14.4）
 # =============================================================================
+
 
 class TestAcceptLanguage:
     """Section 14.4: Accept-Languageヘッダーによる言語ネゴシエーション"""
@@ -284,6 +287,7 @@ class TestAcceptLanguage:
 # =============================================================================
 # ブラウザが送信する典型的なAcceptヘッダーセット
 # =============================================================================
+
 
 class TestTypicalBrowserHeaders:
     """実際のブラウザが送信する典型的なネゴシエーションヘッダー"""

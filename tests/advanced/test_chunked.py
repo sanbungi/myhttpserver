@@ -3,8 +3,8 @@
 チャンク形式のリクエストボディの受信・デコード、
 チャンクレスポンスの検証、Transfer-Encodingヘッダーの処理をテストする。
 """
+
 import socket
-import time
 
 import pytest
 import requests
@@ -93,6 +93,7 @@ def _decode_chunked_body(chunked_data):
 # =============================================================================
 # チャンクリクエストボディの送信
 # =============================================================================
+
 
 class TestChunkedRequestBody:
     """Section 3.6.1: チャンク形式のリクエストボディを送信"""
@@ -211,6 +212,7 @@ class TestChunkedRequestBody:
 # チャンクレスポンスの検証
 # =============================================================================
 
+
 class TestChunkedResponse:
     """サーバーがチャンクレスポンスを返す場合のテスト"""
 
@@ -253,7 +255,9 @@ class TestChunkedResponse:
 
         if is_chunked:
             # チャンク転送の場合、Content-Lengthは含むべきでない
-            assert not has_content_length, "Chunked response must not include Content-Length"
+            assert not has_content_length, (
+                "Chunked response must not include Content-Length"
+            )
         # 片方は必ず存在
         assert is_chunked or has_content_length
 
@@ -261,6 +265,7 @@ class TestChunkedResponse:
 # =============================================================================
 # Transfer-Encoding ヘッダーの処理（Section 14.41）
 # =============================================================================
+
 
 class TestTransferEncoding:
     """Section 14.41: Transfer-Encodingヘッダーの処理"""
@@ -303,6 +308,7 @@ class TestTransferEncoding:
 # =============================================================================
 # チャンクサイズのエッジケース
 # =============================================================================
+
 
 class TestChunkedEdgeCases:
     """チャンク転送のエッジケーステスト"""
@@ -352,7 +358,6 @@ class TestChunkedEdgeCases:
         finally:
             s.close()
 
-    @pytest.mark.xfail(reason="Server returns 405 for POST (method not supported) before parsing chunks")
     def test_invalid_chunk_size(self):
         """不正なチャンクサイズ（16進数でない）"""
         s = _make_socket()
@@ -426,6 +431,7 @@ class TestChunkedEdgeCases:
 # requestsライブラリを使ったチャンクテスト
 # =============================================================================
 
+
 class TestChunkedWithRequests:
     """requestsライブラリ経由でのチャンク転送テスト"""
 
@@ -442,9 +448,7 @@ class TestChunkedWithRequests:
 
     def test_stream_response_content(self, server):
         """ストリーミングでレスポンスを読む"""
-        resp = requests.get(
-            f"{server}/test.txt", timeout=REQUEST_TIMEOUT, stream=True
-        )
+        resp = requests.get(f"{server}/test.txt", timeout=REQUEST_TIMEOUT, stream=True)
         assert resp.status_code == 200
         lines = list(resp.iter_lines())
         assert len(lines) > 0
