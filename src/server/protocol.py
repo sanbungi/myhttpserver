@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 import zstandard as zstd
 
+from http_date import http_date_now
 from reason_phrase import get_http_reason_phrase
 
 
@@ -62,6 +63,7 @@ class HTTPResponse:
 
         # Content-Length は圧縮後のボディ長で返す
         self.headers["Content-Length"] = str(len(response_body))
+        self.headers["Date"] = http_date_now()
 
         # ヘッダー結合
         header_lines = ""
