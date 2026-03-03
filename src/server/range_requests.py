@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
+from .etag_utils import strong_etag_equal
+
 
 @dataclass(frozen=True)
 class ByteRange:
@@ -139,7 +141,7 @@ def should_apply_range_for_if_range(
     if not raw:
         return True
 
-    if current_etag and _normalize_etag(raw) == _normalize_etag(current_etag):
+    if current_etag and strong_etag_equal(raw, current_etag):
         return True
 
     if_range_dt = _parse_http_date(raw)
@@ -149,13 +151,6 @@ def should_apply_range_for_if_range(
 
     # If-Range が Last-Modified 以上なら「変更なし」と見なして Range 適用
     return last_modified_dt <= if_range_dt
-
-
-def _normalize_etag(value: str) -> str:
-    normalized = value.strip()
-    if normalized.startswith("W/"):
-        normalized = normalized[2:].strip()
-    return normalized.strip('"')
 
 
 def _parse_http_date(value: str):

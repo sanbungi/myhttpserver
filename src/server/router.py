@@ -11,6 +11,7 @@ from icecream import ic
 from config_model import ServerConfig
 from FileCache import FileCache
 
+from .etag_utils import weak_etag_equal
 from .protocol import HTTPRequest, HTTPResponse
 from .range_requests import (
     build_multipart_byteranges_body,
@@ -450,10 +451,7 @@ def check_cache_if_none_match(request: HTTPRequest, current_etag: Optional[str])
 
     for tag in raw_tag.split(","):
         candidate = tag.strip()
-        if candidate.startswith("W/"):
-            candidate = candidate[2:].strip()
-        candidate = candidate.strip('"')
-        if current_etag == candidate:
+        if weak_etag_equal(candidate, current_etag):
             return True
 
     return False

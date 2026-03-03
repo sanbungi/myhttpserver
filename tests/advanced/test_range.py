@@ -486,6 +486,23 @@ class TestRangeEdgeCases:
         # ETagが一致すれば206
         assert resp2.status_code == 206
 
+    def test_range_with_weak_if_range_etag(self, server):
+        """弱いETag（W/）をIf-Rangeに指定した場合はRangeを適用しない"""
+        resp1 = requests.get(f"{server}/test.txt", timeout=REQUEST_TIMEOUT)
+        etag = resp1.headers.get("ETag", "")
+        assert etag, "ETag header must be present"
+
+        weak_etag = etag if etag.startswith("W/") else f"W/{etag}"
+        resp2 = requests.get(
+            f"{server}/test.txt",
+            headers={
+                "Range": "bytes=0-4",
+                "If-Range": weak_etag,
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        assert resp2.status_code == 200
+
     def test_range_zero_length_file(self, http_socket):
         """空ファイルへのレンジリクエスト"""
         # 通常のテスト用ファイルが存在しない場合を想定

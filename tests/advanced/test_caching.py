@@ -223,6 +223,20 @@ class TestIfNoneMatch:
         )
         assert resp2.status_code == 304
 
+    def test_304_with_weak_if_none_match(self, server):
+        """弱いETag（W/）でもIf-None-Matchは一致として304を返す"""
+        resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
+        etag = resp1.headers.get("ETag", "")
+        assert etag, "ETag header must be present"
+
+        weak_etag = etag if etag.startswith("W/") else f"W/{etag}"
+        resp2 = requests.get(
+            f"{server}/index.html",
+            headers={"If-None-Match": weak_etag},
+            timeout=REQUEST_TIMEOUT,
+        )
+        assert resp2.status_code == 304
+
     def test_200_with_non_matching_etag(self, server):
         """ETagが一致しないIf-None-Matchで200が返る"""
         resp = requests.get(
