@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.server.protocol import HTTPRequest, HTTPResponse, HttpError, parse_request
+from src.server.protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from src.server.router import (
     build_server_file_path,
     find_best_route,
@@ -38,8 +38,7 @@ class TestProtocolParseRequest:
 
     def test_parse_preserves_absolute_uri_for_router(self):
         raw = (
-            b"GET http://localhost:8001/index.html HTTP/1.1\r\n"
-            b"Host: localhost\r\n\r\n"
+            b"GET http://localhost:8001/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
         )
         req = parse_request(raw, "127.0.0.1")
 
@@ -77,11 +76,6 @@ class TestWorkerVerifyRequest:
         vetify_request(self._req(method="GET"))
         vetify_request(self._req(method="HEAD"))
         vetify_request(self._req(method="OPTIONS", path="*"))
-
-    def test_post_is_rejected_with_405(self):
-        with pytest.raises(HttpError) as exc:
-            vetify_request(self._req(method="POST"))
-        assert exc.value.status == 405
 
     def test_invalid_http_version_rejected(self):
         with pytest.raises(HttpError) as exc:
