@@ -52,6 +52,8 @@ class HTTPResponse:
         status_line = f"HTTP/1.1 {self.status} {reason}\r\n"
 
         response_body = self.body
+        if isinstance(response_body, str):
+            response_body = response_body.encode()
 
         if self.__compress == "gzip":
             out = BytesIO()
@@ -72,9 +74,6 @@ class HTTPResponse:
         header_lines = ""
         for k, v in self.headers.items():
             header_lines += f"{k}: {v}\r\n"
-
-        if isinstance(response_body, str):
-            response_body = response_body.encode()
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + response_body
