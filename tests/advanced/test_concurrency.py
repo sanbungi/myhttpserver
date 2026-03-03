@@ -8,11 +8,18 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import pytest
 import requests
 
 REQUEST_TIMEOUT = 5
 HOST = "localhost"
 PORT = 8001
+
+
+@pytest.fixture(autouse=True)
+def _configure_socket_target(server_process, server_port):
+    global PORT
+    PORT = server_port
 
 
 def _make_socket():

@@ -1,8 +1,9 @@
 global {
-  worker_processes = 4
+  worker_processes = 8
   max_connections  = 1024
   timeout_keepalive = "65s"
   timeout = "30s"
+  compression_methods = ["zstd", "gzip"] # 許可方式 (優先順)
 
   logging {
     level  = "info"
@@ -13,7 +14,7 @@ global {
 
 server "main-server" {
   host = "example.com"
-  port = 80
+  port = 8443
   root = "./html"
 
   tls {
@@ -33,6 +34,7 @@ server "main-server" {
   route "/" {
     type = "static"
     index = ["index.html", "index.htm"]
+    methods = ["GET", "HEAD", "OPTIONS"]
     
     # ブラウザキャッシュ設定
     headers {
@@ -82,3 +84,19 @@ server "main-server" {
     }
   }
 }
+
+server "redirect-server" {
+  host = "example.com"
+  port = 8000
+  
+  route "/" {
+    type = "redirect"
+    index = [""]
+
+    redirect {
+      url  = "https://192.168.0.108:8443$request_uri"
+      code = 301
+    }
+  }
+}
+

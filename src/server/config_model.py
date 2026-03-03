@@ -2,6 +2,35 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
+SUPPORTED_COMPRESSION_METHODS = ("gzip", "zstd")
+DEFAULT_COMPRESSION_METHODS = ["gzip", "zstd"]
+
+
+def normalize_compression_methods(methods: Optional[List[str]]) -> List[str]:
+    if not methods:
+        return list(DEFAULT_COMPRESSION_METHODS)
+
+    normalized: List[str] = []
+    for method in methods:
+        if not isinstance(method, str):
+            continue
+        candidate = method.strip().lower()
+        if candidate in SUPPORTED_COMPRESSION_METHODS and candidate not in normalized:
+            normalized.append(candidate)
+
+    return normalized or list(DEFAULT_COMPRESSION_METHODS)
+
+
+def normalize_route_path(path: str) -> str:
+    if not path:
+        return "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if path != "/":
+        path = path.rstrip("/")
+    return path or "/"
+
+
 @dataclass
 class HeadersConfig:
     add: Dict[str, str] = field(default_factory=dict)  # set or add
@@ -97,6 +126,7 @@ class RedirectConfig:
 class RouteConfig:
     path: str
     type: str
+    methods: Optional[List[str]] = None
     index: List[str] = field(default_factory=list)
     headers: Optional[HeadersConfig] = None
     backend: Optional[BackendConfig] = None
@@ -107,9 +137,10 @@ class RouteConfig:
     @classmethod
     def from_dict(cls, path: str, data: Dict) -> "RouteConfig":
         return cls(
-            path=path,
+            path=normalize_route_path(path),
             type=data.get("type", "static"),
             index=data.get("index", []),
+            methods=data.get("methods", {}),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
             backend=BackendConfig.from_dict(data.get("backend", {})),
             respond=RespondConfig.from_dict(data.get("respond", {})),
@@ -129,6 +160,9 @@ class ServerConfig:
     host: str
     port: int
     root: Optional[str] = None
+    compression_methods: List[str] = field(
+        default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
+    )
     tls: TlsConfig = field(default_factory=TlsConfig)
     headers: Optional[HeadersConfig] = None
     routes: List[RouteConfig] = field(default_factory=list)
@@ -138,10 +172,14 @@ class ServerConfig:
         routes = []
         raw_routes = data.get("route", [])
 
+        if isinstance(raw_routes, dict):
+            raw_routes = [raw_routes]
+
         # pyhclの route は辞書のリストになっている
         for route_entry in raw_routes:
             for path, route_data in route_entry.items():
                 routes.append(RouteConfig.from_dict(path, route_data))
+        routes.sort(key=lambda r: len(r.path), reverse=True)
 
         return cls(
             name=name,
@@ -160,6 +198,9 @@ class GlobalConfig:
     max_connections: int = 1024
     timeout: str = "30s"
     timeout_keepalive: str = "65s"
+    compression_methods: List[str] = field(
+        default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
+    )
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     @classmethod
@@ -171,6 +212,9 @@ class GlobalConfig:
             max_connections=data.get("max_connections", 1024),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
+            compression_methods=normalize_compression_methods(
+                data.get("compression_methods")
+            ),
             logging=LoggingConfig.from_dict(data.get("logging", {})),
         )
 
@@ -189,5 +233,7 @@ class AppConfig:
         raw_servers = raw_hcl.get("server", {})
         for name, server_data in raw_servers.items():
             servers.append(ServerConfig.from_dict(name, server_data))
+        for server in servers:
+            server.compression_methods = list(g_config.compression_methods)
 
         return cls(global_settings=g_config, servers=servers)
