@@ -48,8 +48,9 @@ async def handle_client(
 
             # Keep-Alive 判定
             conn_header = _get_header_case_insensitive(request.headers, "connection")
+
             conn_header = conn_header.lower()
-            if conn_header == "close":
+            if request.version == "HTTP/1.0" or conn_header == "close":
                 should_close = True
                 response.set_header("Connection", "close")
             else:
