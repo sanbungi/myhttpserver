@@ -46,6 +46,9 @@ class HTTPResponse:
         if reason == "-1":
             self.status = 500
 
+        if self.status == 405:
+            self.headers["Allow"] = "GET, HEAD"
+
         status_line = f"HTTP/1.1 {self.status} {reason}\r\n"
 
         response_body = self.body
