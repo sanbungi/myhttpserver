@@ -193,6 +193,9 @@ def vetify_request(request: HTTPRequest):
     if len(request.path) > 255:
         raise HttpError(414, "REQUEST_URL_TOO_LONG")
 
+    if len(request.headers) > 255:
+        raise HttpError(400, "TOO_MANY_HEADERS")
+
     if request.version not in ("HTTP/1.1", "HTTP/1.0"):
         raise HttpError(400, "INVALID_HTTP_VERSION")
 
