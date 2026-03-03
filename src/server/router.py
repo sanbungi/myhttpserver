@@ -150,6 +150,7 @@ async def resolve_route(
         route = find_best_route(server, request_path)
 
         allow_methods = route.methods
+        ic(allow_methods)
 
         # OPTIONSメソッドは先に確認
         if request.method == "OPTIONS":
@@ -160,6 +161,7 @@ async def resolve_route(
         if allow_methods and request.method not in allow_methods:
             allowed_methods_str = ", ".join(route.methods)
 
+            ic(allowed_methods_str)
             return HTTPResponse(
                 status=405,
                 body=f"405 Method Not Allowed\nAllowed: {allowed_methods_str}",

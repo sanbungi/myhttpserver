@@ -72,6 +72,7 @@ async def handle_client(
         await writer.drain()  # 送信完了待ち
 
     except Exception as e:
+        traceback.print_exc()
         print(f"[-] Error: {e}")
     finally:
         try:
@@ -206,6 +207,7 @@ def vetify_request(request: HTTPRequest):
         if contains_control_chars(header_name) or contains_control_chars(header_value):
             raise HttpError(400, "DISALLOW_CONTAILS_CONTROL_CHARCTER")
 
-    allow_methods = {"GET", "HEAD", "OPTIONS"}
-    if request.method not in allow_methods:
-        raise HttpError(405, "METHOD NOT ALLOWED")
+
+# allow_methods = {"GET", "HEAD", "OPTIONS"}
+# if request.method not in allow_methods:
+#   raise HttpError(405, "METHOD NOT ALLOWED")

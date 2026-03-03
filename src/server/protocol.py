@@ -73,7 +73,8 @@ class HTTPResponse:
         for k, v in self.headers.items():
             header_lines += f"{k}: {v}\r\n"
 
-        # print(header_lines)
+        if isinstance(response_body, str):
+            response_body = response_body.encode()
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + response_body
