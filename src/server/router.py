@@ -12,6 +12,13 @@ from config_model import ServerConfig
 from FileCache import FileCache
 
 from .protocol import HTTPRequest, HTTPResponse
+from .range_requests import (
+    build_multipart_byteranges_body,
+    format_content_range,
+    format_unsatisfied_content_range,
+    parse_range_header,
+    should_apply_range_for_if_range,
+)
 
 # 静的ファイルのルートディレクトリ
 _CWD = os.getcwd()
@@ -197,6 +204,11 @@ async def resolve_route(
             if statmod.S_ISDIR(stat_result.st_mode):
                 return HTTPResponse(status=301, header={"Location": "index.html"})
 
+            range_header = _get_header_case_insensitive(request.headers, "range")
+            if_range_header = _get_header_case_insensitive(request.headers, "if-range")
+            if range_header:
+                ic(range_header)
+
             current_etag = _join_etag_with_encoding(base_etag, encoding)
             etag_header = _format_etag_header(current_etag)
 
@@ -205,6 +217,7 @@ async def resolve_route(
                 headers = {
                     "Last-Modified": last_modify,
                     "Cache-Control": "max-age=3600",
+                    "Accept-Ranges": "bytes",
                 }
                 if etag_header:
                     headers["ETag"] = etag_header
@@ -225,9 +238,62 @@ async def resolve_route(
             response_headers = {
                 "Last-Modified": last_modify,
                 "Cache-Control": "max-age=3600",
+                "Accept-Ranges": "bytes",
             }
             if etag_header:
                 response_headers["ETag"] = etag_header
+
+            if range_header and should_apply_range_for_if_range(
+                if_range_header, current_etag, last_modify
+            ):
+                parsed_range = parse_range_header(range_header, len(content))
+
+                # bytes以外はRangeを無視し、通常の200を返す
+                if parsed_range.unit_supported:
+                    if not parsed_range.is_valid or not parsed_range.ranges:
+                        headers = response_headers | {
+                            "Content-Range": format_unsatisfied_content_range(
+                                len(content)
+                            )
+                        }
+                        response = HTTPResponse(416, b"", headers, content_type)
+                        response.disable_compression()
+                        return response
+
+                    if len(parsed_range.ranges) == 1:
+                        partial_range = parsed_range.ranges[0]
+                        partial_body = content[
+                            partial_range.start : partial_range.end + 1
+                        ]
+                        headers = response_headers | {
+                            "Content-Range": format_content_range(
+                                partial_range, len(content)
+                            )
+                        }
+                        if request.method == "HEAD":
+                            partial_body = b""
+
+                        response = HTTPResponse(206, partial_body, headers, content_type)
+                        response.disable_compression()
+                        return response
+
+                    multipart_type, multipart_body = build_multipart_byteranges_body(
+                        content=content,
+                        ranges=parsed_range.ranges,
+                        content_type=content_type,
+                        resource_size=len(content),
+                    )
+                    if request.method == "HEAD":
+                        multipart_body = b""
+
+                    response = HTTPResponse(
+                        206,
+                        multipart_body,
+                        response_headers,
+                        multipart_type,
+                    )
+                    response.disable_compression()
+                    return response
 
             if request.method == "HEAD":
                 content = b""

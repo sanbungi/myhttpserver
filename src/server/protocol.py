@@ -32,13 +32,20 @@ class HTTPResponse:
         self.body = body
         self.headers = {"Content-Type": content_type} | header
         self.__compress = ""
+        self.__allow_compress = True
 
     def set_header(self, key: str, value: str):
         self.headers[key] = value
 
     def set_compress(self, compress_type):
+        if not self.__allow_compress:
+            return
         if any(c in compress_type for c in ["gzip", "zst"]):
             self.__compress = compress_type
+
+    def disable_compression(self):
+        self.__allow_compress = False
+        self.__compress = ""
 
     def to_bytes(self) -> bytes:
         # ステータス行

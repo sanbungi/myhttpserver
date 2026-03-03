@@ -35,6 +35,8 @@ async def handle_client(
             request.body = full_body
             vetify_request(request)
 
+            ic(request)
+
             accept_encoding = _get_header_case_insensitive(
                 request.headers, "accept-encoding"
             )
