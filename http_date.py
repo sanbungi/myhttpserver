@@ -23,6 +23,7 @@ _last_str = ""
 
 
 def _build_http_date(sec: int) -> str:
+    """RFC 1123 format builder (GMT)."""
     t = time.gmtime(sec)
     return (
         f"{_WD[t.tm_wday]}, {t.tm_mday:02d} {_MO[t.tm_mon - 1]} "

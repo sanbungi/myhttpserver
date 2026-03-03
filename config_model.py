@@ -107,6 +107,7 @@ class RedirectConfig:
 class RouteConfig:
     path: str
     type: str
+    methods: Optional[List[str]] = None
     index: List[str] = field(default_factory=list)
     headers: Optional[HeadersConfig] = None
     backend: Optional[BackendConfig] = None
@@ -120,6 +121,7 @@ class RouteConfig:
             path=normalize_route_path(path),
             type=data.get("type", "static"),
             index=data.get("index", []),
+            methods=data.get("methods", {}),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
             backend=BackendConfig.from_dict(data.get("backend", {})),
             respond=RespondConfig.from_dict(data.get("respond", {})),

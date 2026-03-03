@@ -33,6 +33,7 @@ server "main-server" {
   route "/" {
     type = "static"
     index = ["index.html", "index.htm"]
+    methods = ["GET", "HEAD"]
     
     # ブラウザキャッシュ設定
     headers {

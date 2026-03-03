@@ -147,12 +147,24 @@ async def resolve_route(
     request_path = normalize_request_path(request.path)
 
     try:
-        if request.method == "OPTIONS":
-            ic("OPTIONS CALLS")
-            return HTTPResponse(204, header={"Allow": "GET, HEAD, OPTIONS"})
-
         route = find_best_route(server, request_path)
-        # ic(route)
+
+        allow_methods = route.methods
+
+        # OPTIONSメソッドは先に確認
+        if request.method == "OPTIONS":
+            allowed_methods_str = ", ".join(allow_methods or ["*"])
+            return HTTPResponse(204, header={"Allow": allowed_methods_str})
+
+        # 許可メソッドのチェック
+        if allow_methods and request.method not in allow_methods:
+            allowed_methods_str = ", ".join(route.methods)
+
+            return HTTPResponse(
+                status=405,
+                body=f"405 Method Not Allowed\nAllowed: {allowed_methods_str}",
+                header={"Allow": allowed_methods_str},
+            )
 
         if not route:
             return HTTPResponse(404)
