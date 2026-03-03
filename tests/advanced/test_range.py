@@ -74,7 +74,6 @@ def _get_file_content(server_url, path):
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestBasicByteRange:
     """Section 14.35.1: 基本的なバイトレンジリクエスト"""
 
@@ -152,7 +151,6 @@ class TestBasicByteRange:
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestPartialContentResponse:
     """Section 10.2.7: 206レスポンスの形式検証"""
 
@@ -222,7 +220,6 @@ class TestPartialContentResponse:
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeNotSatisfiable:
     """Section 10.4.17: 満たせないレンジリクエスト"""
 
@@ -270,7 +267,6 @@ class TestRangeNotSatisfiable:
 class TestAcceptRanges:
     """Section 14.5: Accept-Rangesヘッダー"""
 
-    @pytest.mark.xfail(reason="Range requests not implemented")
     def test_accept_ranges_in_response(self, server):
         """レスポンスにAccept-Rangesヘッダーが含まれるか"""
         resp = requests.get(f"{server}/test.txt", timeout=REQUEST_TIMEOUT)
@@ -301,7 +297,6 @@ class TestAcceptRanges:
 class TestRangeWithHead:
     """RangeリクエストとHEADメソッドの組み合わせ"""
 
-    @pytest.mark.xfail(reason="Range requests not implemented")
     def test_head_with_range(self, server):
         """HEADリクエストでのRangeヘッダー"""
         resp = requests.head(
@@ -326,7 +321,6 @@ class TestRangeWithHead:
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeWithSocket:
     """生ソケットでのRangeリクエストテスト"""
 
@@ -386,7 +380,6 @@ class TestRangeWithSocket:
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestMultiRangeRequest:
     """複数レンジの同時リクエスト"""
 
@@ -475,7 +468,6 @@ class TestRangeEdgeCases:
         # ディレクトリへのアクセスはリダイレクト
         assert resp.status_code in [301, 302]
 
-    @pytest.mark.xfail(reason="Range requests / ETag not implemented")
     def test_range_with_if_range(self, server):
         """If-Rangeヘッダーとの組み合わせ（Section 14.27）"""
         # まずETagを取得
@@ -494,7 +486,6 @@ class TestRangeEdgeCases:
         # ETagが一致すれば206
         assert resp2.status_code == 206
 
-    @pytest.mark.xfail(reason="Range requests not implemented")
     def test_range_zero_length_file(self, http_socket):
         """空ファイルへのレンジリクエスト"""
         # 通常のテスト用ファイルが存在しない場合を想定
@@ -507,7 +498,6 @@ class TestRangeEdgeCases:
         # Rangeリクエストは206を返すべき
         assert status_code == 206
 
-    @pytest.mark.xfail(reason="Range requests not implemented")
     def test_range_entire_file(self, server):
         """ファイル全体を含むレンジ"""
         full_content = _get_file_content(server, "/test.txt")
@@ -521,7 +511,6 @@ class TestRangeEdgeCases:
         assert resp.status_code == 206
         assert resp.content == full_content
 
-    @pytest.mark.xfail(reason="Range requests not implemented")
     def test_range_beyond_with_valid_start(self, server):
         """last-byte-posがファイルサイズを超える場合（開始は有効）"""
         full_content = _get_file_content(server, "/test.txt")
@@ -541,7 +530,6 @@ class TestRangeEdgeCases:
 # =============================================================================
 
 
-@pytest.mark.xfail(reason="Range requests not implemented")
 class TestRangeAndCaching:
     """RangeリクエストとHTTPキャッシュの相互作用"""
 
