@@ -3,10 +3,12 @@
 レスポンスの構造、ステータスラインの形式、Dateヘッダー（Section 14.18）、
 Reason Phrase、ヘッダーの大文字小文字、レスポンスボディの整合性をテストする。
 """
+
 import email.utils
 import re
 import socket
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
@@ -45,6 +47,7 @@ def _parse_response(raw):
 # ステータスライン形式（Section 6.1）
 # =============================================================================
 
+
 class TestStatusLine:
     """Section 6.1: Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF"""
 
@@ -76,7 +79,9 @@ class TestStatusLine:
 
     def test_status_line_405(self, http_socket):
         """405 Method Not Allowedのステータスライン"""
-        request = b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+        request = (
+            b"POST /index.html HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+        )
         http_socket.send(request)
         response = _recv_all(http_socket)
         assert b"HTTP/1.1 405 Method Not Allowed\r\n" in response
@@ -95,6 +100,7 @@ class TestStatusLine:
 # =============================================================================
 # Date ヘッダー（Section 14.18）
 # =============================================================================
+
 
 class TestDateHeader:
     """Section 14.18: Dateヘッダーの検証
@@ -134,9 +140,7 @@ class TestDateHeader:
 
     def test_date_header_on_error(self, server):
         """エラーレスポンスでもDateヘッダーが含まれるか"""
-        resp = requests.get(
-            f"{server}/nonexistent.html", timeout=REQUEST_TIMEOUT
-        )
+        resp = requests.get(f"{server}/nonexistent.html", timeout=REQUEST_TIMEOUT)
         assert resp.status_code == 404
         # 4xxレスポンスにもDateが含まれるべき
         date = resp.headers.get("Date", "")
@@ -148,6 +152,7 @@ class TestDateHeader:
 # =============================================================================
 # レスポンスヘッダーの構造（Section 4.2）
 # =============================================================================
+
 
 class TestResponseHeaderStructure:
     """Section 4.2: メッセージヘッダーの構造"""
@@ -183,6 +188,7 @@ class TestResponseHeaderStructure:
 # =============================================================================
 # Content-Length の正確性（Section 14.13）
 # =============================================================================
+
 
 class TestContentLengthAccuracy:
     """Section 14.13: Content-Lengthの値がボディサイズと一致"""
@@ -227,6 +233,7 @@ class TestContentLengthAccuracy:
 # Server ヘッダー（Section 14.38）
 # =============================================================================
 
+
 class TestServerHeaderFormat:
     """Section 14.38: Serverヘッダーの検証"""
 
@@ -252,6 +259,7 @@ class TestServerHeaderFormat:
 # Connection ヘッダーのレスポンス形式（Section 14.10）
 # =============================================================================
 
+
 class TestConnectionHeaderResponse:
     """Section 14.10: レスポンスのConnectionヘッダー"""
 
@@ -269,7 +277,9 @@ class TestConnectionHeaderResponse:
 
     def test_connection_close_in_response(self, http_socket):
         """Connection: closeリクエストのレスポンス"""
-        request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        request = (
+            b"GET /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        )
         http_socket.send(request)
         response = _recv_all(http_socket)
         status_line, headers, body = _parse_response(response)
@@ -279,6 +289,7 @@ class TestConnectionHeaderResponse:
 # =============================================================================
 # レスポンスボディのエンコーディング
 # =============================================================================
+
 
 class TestResponseBodyEncoding:
     """レスポンスボディのエンコーディング検証"""
@@ -294,9 +305,16 @@ class TestResponseBodyEncoding:
 
     def test_binary_content_not_corrupted(self, server):
         """バイナリファイルのコンテンツが破損していない"""
-        resp = requests.get(f"{server}/image.jpg", timeout=REQUEST_TIMEOUT)
+        resp = requests.get(
+            f"{server}/image.jpg",
+            headers={"Accept-Encoding": "identity"},
+            timeout=REQUEST_TIMEOUT,
+        )
         if resp.status_code == 200:
             # Content-Lengthと実際のサイズが一致
             content_length = int(resp.headers.get("Content-Length", "0"))
             if content_length > 0:
                 assert len(resp.content) == content_length
+            fixture_path = Path(__file__).resolve().parents[2] / "html" / "image.jpg"
+            original = fixture_path.read_bytes()
+            assert resp.content == original
