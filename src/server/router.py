@@ -227,6 +227,9 @@ async def resolve_route(
             if etag_header:
                 response_headers["ETag"] = etag_header
 
+            if request.method == "HEAD":
+                content = b""
+
             return HTTPResponse(
                 200,
                 content,
