@@ -442,6 +442,24 @@ class TestConditionalCombinations:
         # 両方満たすなら304
         assert resp2.status_code == 304
 
+    def test_if_none_match_takes_precedence_over_if_modified_since(self, server):
+        """If-None-Match がある場合は If-Modified-Since を無視する"""
+        resp1 = requests.get(f"{server}/index.html", timeout=REQUEST_TIMEOUT)
+        last_mod = resp1.headers.get("Last-Modified", "")
+        assert last_mod, "Last-Modified header must be present"
+
+        resp2 = requests.get(
+            f"{server}/index.html",
+            headers={
+                # 非一致ETag: If-None-Match 評価結果としては 200 になるべき
+                "If-None-Match": '"non-matching-etag"',
+                # これ単独なら 304 になり得る日付
+                "If-Modified-Since": last_mod,
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        assert resp2.status_code == 200
+
     def test_conditional_on_nonexistent_resource(self, server):
         """存在しないリソースへの条件付きGET"""
         resp = requests.get(

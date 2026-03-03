@@ -2,7 +2,8 @@ import ipaddress
 import os
 import stat as statmod
 import traceback
-from email.utils import formatdate
+from datetime import timezone
+from email.utils import formatdate, parsedate_to_datetime
 from typing import Optional
 
 import httpx
@@ -214,6 +215,21 @@ async def resolve_route(
             etag_header = _format_etag_header(current_etag)
 
             cache_hit = check_cache_if_none_match(request, current_etag)
+            if cache_hit:
+                headers = {
+                    "Last-Modified": last_modify,
+                    "Cache-Control": "max-age=3600",
+                    "Accept-Ranges": "bytes",
+                }
+                if etag_header:
+                    headers["ETag"] = etag_header
+                return HTTPResponse(304, header=headers)
+
+            cache_hit = check_cache_if_modified_since(
+                request,
+                stat_result.st_mtime,
+                if_none_match_supported=True,
+            )
             if cache_hit:
                 headers = {
                     "Last-Modified": last_modify,
@@ -455,3 +471,36 @@ def check_cache_if_none_match(request: HTTPRequest, current_etag: Optional[str])
             return True
 
     return False
+
+
+def check_cache_if_modified_since(
+    request: HTTPRequest, last_modified_ts: float, if_none_match_supported: bool = True
+) -> bool:
+    if request.method not in {"GET", "HEAD"}:
+        return False
+
+    # RFC 2616 14.26: If-None-Match がある場合は If-Modified-Since を無視
+    if if_none_match_supported and _get_header_case_insensitive(
+        request.headers, "if-none-match"
+    ):
+        return False
+
+    raw_date = _get_header_case_insensitive(request.headers, "if-modified-since")
+    if not raw_date:
+        return False
+
+    try:
+        since_dt = parsedate_to_datetime(raw_date.strip())
+    except (TypeError, ValueError):
+        return False
+
+    if since_dt is None:
+        return False
+
+    if since_dt.tzinfo is None:
+        since_ts = since_dt.replace(tzinfo=timezone.utc).timestamp()
+    else:
+        since_ts = since_dt.timestamp()
+
+    # Last-Modified は秒精度のため、比較も秒単位に丸める
+    return int(last_modified_ts) <= int(since_ts)
