@@ -154,7 +154,7 @@ def start_server(port: int) -> subprocess.Popen:
 
     cmd = [
         python,
-        str(PROJECT_ROOT / "main.py"),
+        str(PROJECT_ROOT / "src" / "main.py"),
         "--http-port",
         str(port),
     ]

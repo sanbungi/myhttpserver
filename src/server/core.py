@@ -7,7 +7,7 @@ from functools import partial
 
 from icecream import ic
 
-from config_model import ServerConfig
+from .config_model import ServerConfig
 
 from .worker import handle_client
 

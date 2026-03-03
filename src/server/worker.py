@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 
 from icecream import ic
 
-from config_model import ServerConfig
+from .config_model import ServerConfig
 
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import get_preferred_encoding, resolve_route

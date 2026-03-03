@@ -9,7 +9,7 @@
 uv sync
 
 // 起動
-uv run main.py
+uv run src/main.py
 
 // テスト
 uv run pytest .

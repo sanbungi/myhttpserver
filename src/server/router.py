@@ -9,8 +9,8 @@ from typing import Optional
 import httpx
 from icecream import ic
 
-from config_model import ServerConfig
-from FileCache import FileCache
+from .config_model import ServerConfig
+from .FileCache import FileCache
 
 from .etag_utils import weak_etag_equal
 from .protocol import HTTPRequest, HTTPResponse

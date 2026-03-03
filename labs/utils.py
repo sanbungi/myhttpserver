@@ -14,7 +14,7 @@ import xxhash
 import zstandard as zstd
 from icecream import ic
 
-from reason_phrase import get_http_reason_phrase
+from src.server.reason_phrase import get_http_reason_phrase
 
 
 class HTTPRequest:

@@ -6,8 +6,8 @@ from typing import Dict, Optional
 
 import zstandard as zstd
 
-from http_date import http_date_now
-from reason_phrase import get_http_reason_phrase
+from .http_date import http_date_now
+from .reason_phrase import get_http_reason_phrase
 
 
 @dataclass

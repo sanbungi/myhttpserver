@@ -12,8 +12,12 @@ import sys
 import hcl
 from icecream import ic
 
-from config_model import AppConfig, RouteConfig, ServerConfig
-from src.server.core import HTTPServer
+try:
+    from src.server.config_model import AppConfig, RouteConfig, ServerConfig
+    from src.server.core import HTTPServer
+except ModuleNotFoundError:
+    from server.config_model import AppConfig, RouteConfig, ServerConfig
+    from server.core import HTTPServer
 
 
 def parse_args():

@@ -122,7 +122,7 @@ def _build_runtime_config(
             port=port,
             command=[
                 sys.executable,
-                str(project_root / "main.py"),
+                str(project_root / "src" / "main.py"),
                 "--http-port",
                 str(port),
             ],
@@ -157,7 +157,7 @@ def _build_runtime_config(
         port=rewritten_ports[target_server],
         command=[
             sys.executable,
-            str(project_root / "main.py"),
+            str(project_root / "src" / "main.py"),
             "--config",
             str(generated_config_path),
         ],
