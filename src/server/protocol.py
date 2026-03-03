@@ -6,6 +6,8 @@ from typing import Dict, Optional
 
 import zstandard as zstd
 
+from reason_phrase import get_http_reason_phrase
+
 
 @dataclass
 class HTTPRequest:
@@ -39,7 +41,11 @@ class HTTPResponse:
 
     def to_bytes(self) -> bytes:
         # ステータス行
-        status_line = f"HTTP/1.1 {self.status} OK\r\n"
+        reason = get_http_reason_phrase(self.status)
+        if reason == "-1":
+            self.status = 500
+
+        status_line = f"HTTP/1.1 {self.status} {reason}\r\n"
 
         response_body = self.body
 
