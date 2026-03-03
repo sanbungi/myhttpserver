@@ -2,6 +2,25 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
+SUPPORTED_COMPRESSION_METHODS = ("gzip", "zstd")
+DEFAULT_COMPRESSION_METHODS = ["gzip", "zstd"]
+
+
+def normalize_compression_methods(methods: Optional[List[str]]) -> List[str]:
+    if not methods:
+        return list(DEFAULT_COMPRESSION_METHODS)
+
+    normalized: List[str] = []
+    for method in methods:
+        if not isinstance(method, str):
+            continue
+        candidate = method.strip().lower()
+        if candidate in SUPPORTED_COMPRESSION_METHODS and candidate not in normalized:
+            normalized.append(candidate)
+
+    return normalized or list(DEFAULT_COMPRESSION_METHODS)
+
+
 def normalize_route_path(path: str) -> str:
     if not path:
         return "/"
@@ -141,6 +160,9 @@ class ServerConfig:
     host: str
     port: int
     root: Optional[str] = None
+    compression_methods: List[str] = field(
+        default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
+    )
     tls: TlsConfig = field(default_factory=TlsConfig)
     headers: Optional[HeadersConfig] = None
     routes: List[RouteConfig] = field(default_factory=list)
@@ -176,6 +198,9 @@ class GlobalConfig:
     max_connections: int = 1024
     timeout: str = "30s"
     timeout_keepalive: str = "65s"
+    compression_methods: List[str] = field(
+        default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
+    )
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     @classmethod
@@ -187,6 +212,9 @@ class GlobalConfig:
             max_connections=data.get("max_connections", 1024),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
+            compression_methods=normalize_compression_methods(
+                data.get("compression_methods")
+            ),
             logging=LoggingConfig.from_dict(data.get("logging", {})),
         )
 
@@ -205,5 +233,7 @@ class AppConfig:
         raw_servers = raw_hcl.get("server", {})
         for name, server_data in raw_servers.items():
             servers.append(ServerConfig.from_dict(name, server_data))
+        for server in servers:
+            server.compression_methods = list(g_config.compression_methods)
 
         return cls(global_settings=g_config, servers=servers)

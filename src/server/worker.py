@@ -40,7 +40,9 @@ async def handle_client(
             accept_encoding = _get_header_case_insensitive(
                 request.headers, "accept-encoding"
             )
-            encoding = get_preferred_encoding(accept_encoding, ["gzip"])
+            encoding = get_preferred_encoding(
+                accept_encoding, config.compression_methods
+            )
 
             # ルーティング実行
             response = await resolve_route(request, config, encoding=encoding)

@@ -3,6 +3,7 @@ global {
   max_connections  = 1024
   timeout_keepalive = "65s"
   timeout = "30s"
+  compression_methods = ["zstd", "gzip"] # 許可方式 (優先順)
 
   logging {
     level  = "info"
@@ -98,5 +99,4 @@ server "redirect-server" {
     }
   }
 }
-
 
