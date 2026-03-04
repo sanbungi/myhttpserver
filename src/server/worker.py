@@ -4,6 +4,7 @@ import re
 from typing import Optional, Tuple
 
 from .config_model import ServerConfig
+from .logging_config import pretty_block
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import get_preferred_encoding, resolve_route
 
@@ -34,7 +35,7 @@ async def handle_client(
             request.body = full_body
             vetify_request(request)
 
-            logger.debug("request=%s", request)
+            logger.debug("request=%s", pretty_block(request))
 
             accept_encoding = _get_header_case_insensitive(
                 request.headers, "accept-encoding"
@@ -62,7 +63,7 @@ async def handle_client(
 
             # レスポンス送信
             try:
-                logger.debug("response.headers=%s", response.headers)
+                logger.debug("response.headers=%s", pretty_block(response.headers))
                 writer.write(response.to_bytes())
                 await writer.drain()  # 送信完了待ち
             except (ConnectionResetError, BrokenPipeError):

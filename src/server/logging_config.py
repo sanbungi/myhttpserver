@@ -1,7 +1,10 @@
 import logging
 import os
+from dataclasses import asdict, is_dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from pprint import pformat
+from textwrap import indent
 
 _DEFAULT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d %(message)s"
 _CONSOLE_COLOR_FORMAT = (
@@ -15,6 +18,24 @@ _LEVEL_COLORS = {
     logging.ERROR: "\x1b[31m",  # red
     logging.CRITICAL: "\x1b[35;1m",  # bold magenta
 }
+
+
+def pretty_log(value: object) -> str:
+    if is_dataclass(value):
+        value = asdict(value)
+    elif hasattr(value, "__dict__") and not isinstance(value, type):
+        try:
+            value = vars(value)
+        except TypeError:
+            pass
+
+    if isinstance(value, (dict, list, tuple, set)):
+        return pformat(value, width=100, compact=False, sort_dicts=False)
+    return str(value)
+
+
+def pretty_block(value: object, prefix: str = "  ") -> str:
+    return "\n" + indent(pretty_log(value), prefix)
 
 
 def _parse_level(level_str: str, default: int = logging.INFO) -> int:

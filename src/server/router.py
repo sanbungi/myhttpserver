@@ -11,6 +11,7 @@ import httpx
 from .config_model import ServerConfig
 from .etag_utils import weak_etag_equal
 from .FileCache import FileCache
+from .logging_config import pretty_block, pretty_log
 from .protocol import HTTPRequest, HTTPResponse
 from .range_requests import (
     build_multipart_byteranges_body,
@@ -159,7 +160,7 @@ async def resolve_route(
         route = find_best_route(server, request_path)
 
         allow_methods = route.methods
-        logger.debug("allow_methods=%s", allow_methods)
+        logger.debug("allow_methods=%s", pretty_log(allow_methods))
 
         # OPTIONSメソッドは先に確認
         if request.method == "OPTIONS":
@@ -348,7 +349,7 @@ async def resolve_route(
                     )
 
                 logger.debug("upstream status=%s", resp.status_code)
-                logger.debug("upstream headers=%s", dict(resp.headers))
+                logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
 
                 _content_type = resp.headers["content-type"]
                 resp.headers.pop("content-type", None)
@@ -367,14 +368,14 @@ async def resolve_route(
         # 固定値のレスポンス
         elif route.type == "raw":
             if route.respond:
-                logger.debug("route=%s", route)
+                logger.debug("route=%s", pretty_block(route))
                 return HTTPResponse(route.respond.status, route.respond.body)
             return HTTPResponse(500)
 
         # リダイレクト
         elif route.type == "redirect":
             logger.debug("REDIRECT")
-            logger.debug("route.redirect=%s", route.redirect)
+            logger.debug("route.redirect=%s", pretty_block(route.redirect))
             redirect_url = route.redirect.url
             if "$request_uri" in redirect_url:
                 redirect_url = redirect_url.replace("$request_uri", request.path)
