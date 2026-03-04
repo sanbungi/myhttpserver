@@ -4,6 +4,17 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 _DEFAULT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d %(message)s"
+_CONSOLE_COLOR_FORMAT = (
+    "%(asctime)s [%(levelname_color)s] %(name)s:%(lineno)d %(message)s"
+)
+_RESET = "\x1b[0m"
+_LEVEL_COLORS = {
+    logging.DEBUG: "\x1b[36m",  # cyan
+    logging.INFO: "\x1b[32m",  # green
+    logging.WARNING: "\x1b[33m",  # yellow
+    logging.ERROR: "\x1b[31m",  # red
+    logging.CRITICAL: "\x1b[35;1m",  # bold magenta
+}
 
 
 def _parse_level(level_str: str, default: int = logging.INFO) -> int:
@@ -33,11 +44,25 @@ def setup_logging(
             h.setLevel(level)
         return
 
-    formatter = logging.Formatter(fmt)
-
     ch = logging.StreamHandler()
     ch.setLevel(level)
-    ch.setFormatter(formatter)
+    use_color = hasattr(ch.stream, "isatty") and ch.stream.isatty()
+    if os.getenv("NO_COLOR"):
+        use_color = False
+
+    if use_color:
+        def _inject_level_color(record: logging.LogRecord) -> bool:
+            color = _LEVEL_COLORS.get(record.levelno, "")
+            if color:
+                record.levelname_color = f"{color}{record.levelname}{_RESET}"
+            else:
+                record.levelname_color = record.levelname
+            return True
+
+        ch.addFilter(_inject_level_color)
+        ch.setFormatter(logging.Formatter(_CONSOLE_COLOR_FORMAT))
+    else:
+        ch.setFormatter(logging.Formatter(fmt))
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     if log_file is None:
@@ -51,7 +76,7 @@ def setup_logging(
         encoding="utf-8",
     )
     fh.setLevel(level)
-    fh.setFormatter(formatter)
+    fh.setFormatter(logging.Formatter(fmt))
 
     root.addHandler(ch)
     root.addHandler(fh)
