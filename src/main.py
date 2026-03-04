@@ -124,20 +124,29 @@ def main():
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-    cpu_count = max(1, app_config.global_settings.worker_processes)
-    workers_per_port = 4
+    cpu_count = multiprocessing.cpu_count()
+    server_count = len(app_config.servers)
+    worker_processes = max(1, app_config.global_settings.worker_processes)
+
+    base, remainder = divmod(worker_processes, server_count)
+
+    workers_per_server = [
+        base + (1 if i < remainder else 0) for i in range(server_count)
+    ]
+
     workers = []
 
-    print(f"Starting server with {cpu_count} workers ...")
-
-    # ic(app_config)
+    print(f"CPU: {cpu_count}")
+    print(f"Servers: {server_count}")
+    print(f"Workers per server: {workers_per_server}")
+    print(f"Total workers: {sum(workers_per_server)}")
 
     # ワーカープロセスの起動
-    for server in app_config.servers:
+    for server, worker_count in zip(app_config.servers, workers_per_server):
         port = server.port
-        print(f"Starting {workers_per_port} workers on port {port}...")
+        print(f"Starting {worker_count} workers on port {port}...")
 
-        for _ in range(workers_per_port):
+        for _ in range(worker_count):
             p = multiprocessing.Process(
                 target=run_worker_process,
                 args=(args.host, port, server),
@@ -147,18 +156,17 @@ def main():
 
     # メインプロセスの待機ループ
     try:
-        # 子プロセスが生きているか監視（joinだとCtrl+Cが効きにくい場合があるため）
         for p in workers:
             p.join()
     except KeyboardInterrupt:
         print("\nStopping all workers...")
         for p in workers:
             if p.is_alive():
-                p.terminate()  # 強制終了シグナルを送る
+                p.terminate()
                 p.join()
 
-    print("Server stopped.")
 
+print("Server stopped.")
 
 if __name__ == "__main__":
     main()
