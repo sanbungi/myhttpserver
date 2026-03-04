@@ -8,7 +8,6 @@ from functools import partial
 from icecream import ic
 
 from .config_model import ServerConfig
-
 from .worker import handle_client
 
 
@@ -56,10 +55,11 @@ class HTTPServer:
 
         if use_ssl:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            _tls = self.config.tls
             try:
-                context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+                context.load_cert_chain(certfile=_tls.cert, keyfile=_tls.key)
             except Exception as e:
-                ic(f"SSL Load Error: {e}")
+                print(f"SSL Load Error: {e} cert={_tls.cert} key={_tls.key}")
                 traceback.print_exc()
                 return
 
