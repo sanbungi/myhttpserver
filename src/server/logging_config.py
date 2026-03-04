@@ -6,9 +6,16 @@ from pathlib import Path
 from pprint import pformat
 from textwrap import indent
 
+# HACK 固定値
 _DEFAULT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d %(message)s"
 _CONSOLE_COLOR_FORMAT = (
     "%(asctime)s [%(levelname_color)s] %(name)s:%(lineno)d %(message)s"
+)
+_ACCESS_LOGGER_NAME = "access"
+_ACCESS_DATEFMT = "%d/%b/%Y:%H:%M:%S %z"
+_ACCESS_FORMAT = (
+    '%(remote_addr)s - - [%(asctime)s] "%(method)s %(url)s %(http_version)s" '
+    '%(status_code)s %(response_size)s "%(user_agent)s"'
 )
 _RESET = "\x1b[0m"
 _LEVEL_COLORS = {
@@ -38,6 +45,73 @@ def pretty_block(value: object, prefix: str = "  ") -> str:
     return "\n" + indent(pretty_log(value), prefix)
 
 
+def _sanitize_access_field(value: object, default: str = "-") -> str:
+    if value is None:
+        return default
+    s = str(value).strip()
+    if not s:
+        return default
+    return s.replace("\r", " ").replace("\n", " ").replace('"', '\\"')
+
+
+def _ensure_access_logger(app_name: str, log_dir: str) -> None:
+    access_logger = logging.getLogger(_ACCESS_LOGGER_NAME)
+    access_logger.setLevel(logging.INFO)
+    access_logger.propagate = False
+
+    for h in access_logger.handlers:
+        if getattr(h, "_myhttp_access_handler", False):
+            return
+
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    access_logfile_path = str(Path(log_dir) / f"{app_name}.access.log")
+
+    # HACK 固定値
+    ah = RotatingFileHandler(
+        access_logfile_path,
+        maxBytes=5 * 1024 * 1024,  # 5MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+    ah.setLevel(logging.INFO)
+    ah.setFormatter(logging.Formatter(_ACCESS_FORMAT, datefmt=_ACCESS_DATEFMT))
+    ah._myhttp_access_handler = True
+    access_logger.addHandler(ah)
+
+
+def log_access(
+    *,
+    remote_addr: str,
+    url: str,
+    status_code: int,
+    response_size: int,
+    user_agent: str,
+    method: str = "-",
+    http_version: str = "-",
+) -> None:
+    access_logger = logging.getLogger(_ACCESS_LOGGER_NAME)
+    if not access_logger.handlers:
+        return
+
+    safe_status = int(status_code) if isinstance(status_code, int) else 0
+    safe_size = int(response_size) if isinstance(response_size, int) else 0
+    if safe_size < 0:
+        safe_size = 0
+
+    access_logger.info(
+        "",
+        extra={
+            "remote_addr": _sanitize_access_field(remote_addr),
+            "method": _sanitize_access_field(method),
+            "url": _sanitize_access_field(url),
+            "http_version": _sanitize_access_field(http_version),
+            "status_code": safe_status,
+            "response_size": safe_size,
+            "user_agent": _sanitize_access_field(user_agent),
+        },
+    )
+
+
 def _parse_level(level_str: str, default: int = logging.INFO) -> int:
     if not level_str:
         return default
@@ -63,6 +137,7 @@ def setup_logging(
         # レベルだけ更新したい場合に備えて、ここで反映しておく
         for h in root.handlers:
             h.setLevel(level)
+        _ensure_access_logger(app_name=app_name, log_dir=log_dir)
         return
 
     ch = logging.StreamHandler()
@@ -72,6 +147,7 @@ def setup_logging(
         use_color = False
 
     if use_color:
+
         def _inject_level_color(record: logging.LogRecord) -> bool:
             color = _LEVEL_COLORS.get(record.levelno, "")
             if color:
@@ -87,9 +163,10 @@ def setup_logging(
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     if log_file is None:
-        log_file = f"{app_name}.log"
+        log_file = f"{app_name}.error.log"
     logfile_path = str(Path(log_dir) / log_file)
 
+    # HACK 固定値
     fh = RotatingFileHandler(
         logfile_path,
         maxBytes=5 * 1024 * 1024,  # 5MB
@@ -101,7 +178,4 @@ def setup_logging(
 
     root.addHandler(ch)
     root.addHandler(fh)
-
-    # うるさい外部ライブラリを落としたいとき（任意）
-    # logging.getLogger("urllib3").setLevel(logging.WARNING)
-    # logging.getLogger("asyncio").setLevel(logging.WARNING)
+    _ensure_access_logger(app_name=app_name, log_dir=log_dir)

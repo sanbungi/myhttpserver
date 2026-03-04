@@ -4,7 +4,7 @@ import re
 from typing import Optional, Tuple
 
 from .config_model import ServerConfig
-from .logging_config import pretty_block
+from .logging_config import log_access, pretty_block
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import get_preferred_encoding, resolve_route
 
@@ -17,9 +17,11 @@ async def handle_client(
     peer = writer.get_extra_info("peername")
     ip, port = peer
     # print(f"[+] Connection from ip={ip}, port={port}")
+    request: Optional[HTTPRequest] = None
 
     try:
         while True:
+            request = None
             loaded_data = await safe_load(reader, writer, ip)
 
             if loaded_data is None:
@@ -64,8 +66,20 @@ async def handle_client(
             # レスポンス送信
             try:
                 logger.debug("response.headers=%s", pretty_block(response.headers))
-                writer.write(response.to_bytes())
+                response_bytes = response.to_bytes()
+                writer.write(response_bytes)
                 await writer.drain()  # 送信完了待ち
+                log_access(
+                    remote_addr=ip,
+                    method=request.method,
+                    url=request.path,
+                    http_version=request.version,
+                    status_code=response.status,
+                    response_size=_response_size(response),
+                    user_agent=_get_header_case_insensitive(
+                        request.headers, "user-agent", default="-"
+                    ),
+                )
             except (ConnectionResetError, BrokenPipeError):
                 break
 
@@ -74,8 +88,22 @@ async def handle_client(
     except HttpError as e:
         logger.warning("send HTTPError e:%s", e)
         response = HTTPResponse(e.status)
-        writer.write(response.to_bytes())
+        response_bytes = response.to_bytes()
+        writer.write(response_bytes)
         await writer.drain()  # 送信完了待ち
+        log_access(
+            remote_addr=ip,
+            method=request.method if request else "-",
+            url=request.path if request else "-",
+            http_version=request.version if request else "-",
+            status_code=response.status,
+            response_size=_response_size(response),
+            user_agent=(
+                _get_header_case_insensitive(request.headers, "user-agent", default="-")
+                if request
+                else "-"
+            ),
+        )
 
     except Exception as e:
         logger.exception("Unhandled error in client handler: %s", e)
@@ -106,6 +134,14 @@ def _get_header_case_insensitive(headers: dict, name: str, default: str = "") ->
         if key.lower() == lowered_name:
             return value
     return default
+
+
+def _response_size(response: HTTPResponse) -> int:
+    content_length = response.headers.get("Content-Length", "0")
+    try:
+        return max(0, int(content_length))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _parse_content_length(header_part: bytes) -> int:
