@@ -6,7 +6,6 @@ from typing import Optional, Tuple
 from icecream import ic
 
 from .config_model import ServerConfig
-
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import get_preferred_encoding, resolve_route
 
@@ -63,6 +62,7 @@ async def handle_client(
 
             # レスポンス送信
             try:
+                ic(response.headers)
                 writer.write(response.to_bytes())
                 await writer.drain()  # 送信完了待ち
             except (ConnectionResetError, BrokenPipeError):

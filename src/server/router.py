@@ -328,7 +328,7 @@ async def resolve_route(
             send_header = dict(request.headers)
             upstrean_url = route.backend.upstream
 
-            proxy_request_path = "/" + request_path[len(route.path) :]
+            proxy_request_path = request_path[len(route.path) :]
 
             ic(proxy_request_path)
             ic(upstrean_url)
@@ -348,12 +348,16 @@ async def resolve_route(
 
                 ic(resp.status_code)
                 ic(dict(resp.headers))
-                # ic(resp.text) # textアクセスは再読み込みが発生する場合があるので注意
+
+                _content_type = resp.headers["content-type"]
+                resp.headers.pop("content-type", None)
+                resp = drop_proxy_header(resp)
 
                 return HTTPResponse(
-                    resp.status_code,
-                    resp.content,  # bytes
-                    dict(resp.headers),
+                    status=resp.status_code,
+                    body=resp.content,  # bytes
+                    content_type=_content_type,
+                    header=dict(resp.headers),
                 )
             except httpx.RequestError as e:
                 ic(f"Upstream error: {e}")
@@ -511,3 +515,26 @@ def check_cache_if_modified_since(
 
     # Last-Modified は秒精度のため、比較も秒単位に丸める
     return int(last_modified_ts) <= int(since_ts)
+
+
+def drop_proxy_header(resp: httpx.Response):
+    # hop-by-hop header
+    remove_header = [
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+    ]
+    for r in remove_header:
+        resp.headers.pop(r, None)
+
+    # 以下の削除は実装方針による
+    resp.headers.pop("content-length", None)
+    resp.headers.pop("date", None)
+    resp.headers.pop("server", None)
+
+    return resp
