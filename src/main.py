@@ -13,11 +13,11 @@ import sys
 import hcl
 
 try:
-    from src.server.config_model import AppConfig, RouteConfig, ServerConfig
+    from src.server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
     from src.server.core import HTTPServer
     from src.server.logging_config import setup_logging
 except ModuleNotFoundError:
-    from server.config_model import AppConfig, RouteConfig, ServerConfig
+    from server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
     from server.core import HTTPServer
     from server.logging_config import setup_logging
 
@@ -73,8 +73,25 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_worker_process(host, port, config: ServerConfig):
-    setup_logging(app_name="myhttpserver")
+def _build_logging_kwargs(logging_config: LoggingConfig) -> dict:
+    return {
+        "app_name": logging_config.app_name,
+        "log_dir": logging_config.log_dir,
+        "log_file": logging_config.error_log_file,
+        "access_log_file": logging_config.access_log_file,
+        "access_logger_name": logging_config.access_logger_name,
+        "access_format": logging_config.access_format,
+        "access_datefmt": logging_config.access_datefmt,
+        "max_bytes": logging_config.max_bytes,
+        "backup_count": logging_config.backup_count,
+        "level_name": logging_config.level,
+    }
+
+
+def run_worker_process(
+    host, port, config: ServerConfig, logging_config: LoggingConfig
+):
+    setup_logging(**_build_logging_kwargs(logging_config))
     server = HTTPServer(host=host, port=port, config=config)
 
     try:
@@ -84,13 +101,13 @@ def run_worker_process(host, port, config: ServerConfig):
 
 
 def main():
-    setup_logging(app_name="myhttpserver")
     args = parse_args()
 
     with open(args.config, "r") as fp:
         raw_obj = hcl.load(fp)
 
     app_config = AppConfig.load(raw_obj)
+    setup_logging(**_build_logging_kwargs(app_config.global_settings.logging))
 
     # webrootを実態パスに
     webroot = os.path.abspath(args.webroot)
@@ -110,7 +127,9 @@ def main():
         logger.info(
             "Starting compatibility server on %s:%s ...", args.host, port_override
         )
-        run_worker_process(args.host, port_override, compat_server)
+        run_worker_process(
+            args.host, port_override, compat_server, app_config.global_settings.logging
+        )
         return
 
     def shutdown_handler(signum, frame):
@@ -147,7 +166,7 @@ def main():
         for _ in range(worker_count):
             p = multiprocessing.Process(
                 target=run_worker_process,
-                args=(args.host, port, server),
+                args=(args.host, port, server, app_config.global_settings.logging),
             )
             p.start()
             workers.append(p)

@@ -6,9 +6,20 @@ global {
   compression_methods = ["zstd", "gzip"] # 許可方式 (優先順)
 
   logging {
-    level  = "info"
-    output = "/var/log/myhttpd/access.log"
-    format = "json" # json or text
+    level = "info"
+    app_name = "myhttpserver"
+    log_dir = "logs"
+    error_log_file = "myhttpserver.error.log"
+    access_log_file = "myhttpserver.access.log"
+
+    # rotating file settings
+    max_bytes = 5242880
+    backup_count = 5
+
+    # access log
+    access_logger_name = "access"
+    access_datefmt = "%d/%b/%Y:%H:%M:%S %z"
+    access_format = "%(remote_addr)s - - [%(asctime)s] \"%(method)s %(url)s %(http_version)s\" %(status_code)s %(response_size)s \"%(user_agent)s\""
   }
 }
 
@@ -99,4 +110,3 @@ server "redirect-server" {
     }
   }
 }
-

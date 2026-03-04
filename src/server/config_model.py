@@ -48,12 +48,55 @@ class HeadersConfig:
 @dataclass
 class LoggingConfig:
     level: str = "info"
-    output: str = "stdout"
-    format: str = "text"
+    app_name: str = "myhttpserver"
+    log_dir: str = "logs"
+    error_log_file: Optional[str] = None
+    access_log_file: Optional[str] = None
+    max_bytes: int = 5 * 1024 * 1024
+    backup_count: int = 5
+    access_format: str = (
+        '%(remote_addr)s - - [%(asctime)s] "%(method)s %(url)s %(http_version)s" '
+        '%(status_code)s %(response_size)s "%(user_agent)s"'
+    )
+    access_datefmt: str = "%d/%b/%Y:%H:%M:%S %z"
+    access_logger_name: str = "access"
+    output: str = "stdout"  # backward-compat
+    format: str = "text"  # backward-compat
+
+    @staticmethod
+    def _to_int(value, default: int, min_value: int = 0) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        if parsed < min_value:
+            return default
+        return parsed
 
     @classmethod
     def from_dict(cls, data: Dict) -> "LoggingConfig":
-        return cls(**data) if data else cls()
+        if not data:
+            return cls()
+        return cls(
+            level=str(data.get("level", "info")),
+            app_name=str(data.get("app_name", "myhttpserver")),
+            log_dir=str(data.get("log_dir", "logs")),
+            error_log_file=data.get("error_log_file"),
+            access_log_file=data.get("access_log_file"),
+            max_bytes=cls._to_int(data.get("max_bytes"), 5 * 1024 * 1024, min_value=1),
+            backup_count=cls._to_int(data.get("backup_count"), 5, min_value=0),
+            access_format=str(
+                data.get(
+                    "access_format",
+                    '%(remote_addr)s - - [%(asctime)s] "%(method)s %(url)s %(http_version)s" '
+                    '%(status_code)s %(response_size)s "%(user_agent)s"',
+                )
+            ),
+            access_datefmt=str(data.get("access_datefmt", "%d/%b/%Y:%H:%M:%S %z")),
+            access_logger_name=str(data.get("access_logger_name", "access")),
+            output=str(data.get("output", "stdout")),
+            format=str(data.get("format", "text")),
+        )
 
 
 @dataclass
