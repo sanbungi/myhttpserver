@@ -1,14 +1,14 @@
 import asyncio
+import logging
 import os
 import socket
 import ssl
-import traceback
 from functools import partial
-
-from icecream import ic
 
 from .config_model import ServerConfig
 from .worker import handle_client
+
+logger = logging.getLogger(__name__)
 
 
 class HTTPServer:
@@ -34,9 +34,8 @@ class HTTPServer:
             sock.bind((self.host, self.port))
         except OSError as e:
             # 既にバインドされている場合などのエラーハンドリング
-            print(f"Bind failed: {e}")
+            logger.exception("Bind failed: %s", e)
             sock.close()
-            traceback.print_exc()
             raise e
 
         return sock
@@ -59,8 +58,9 @@ class HTTPServer:
             try:
                 context.load_cert_chain(certfile=_tls.cert, keyfile=_tls.key)
             except Exception as e:
-                print(f"SSL Load Error: {e} cert={_tls.cert} key={_tls.key}")
-                traceback.print_exc()
+                logger.exception(
+                    "SSL load error cert=%s key=%s: %s", _tls.cert, _tls.key, e
+                )
                 return
 
             # 既存のソケットを使ってサーバーを開始
@@ -72,7 +72,7 @@ class HTTPServer:
                     await server.serve_forever()
 
             except ssl.SSLError as e:
-                ic(f"SSL handshake faild with {self.host}: {e}")
+                logger.warning("SSL handshake failed with %s: %s", self.host, e)
         else:
             server = await asyncio.start_server(
                 partial(handle_client, config=self.config), sock=sock
@@ -81,4 +81,4 @@ class HTTPServer:
                 await server.serve_forever()
 
         pid = os.getpid()
-        print(f"[PID: {pid}] Serving on http://{self.host}:{self.port}")
+        logger.info("[PID: %s] Serving on http://%s:%s", pid, self.host, self.port)

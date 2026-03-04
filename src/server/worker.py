@@ -1,13 +1,13 @@
 import asyncio
+import logging
 import re
-import traceback
 from typing import Optional, Tuple
-
-from icecream import ic
 
 from .config_model import ServerConfig
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import get_preferred_encoding, resolve_route
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_client(
@@ -34,7 +34,7 @@ async def handle_client(
             request.body = full_body
             vetify_request(request)
 
-            ic(request)
+            logger.debug("request=%s", request)
 
             accept_encoding = _get_header_case_insensitive(
                 request.headers, "accept-encoding"
@@ -62,7 +62,7 @@ async def handle_client(
 
             # レスポンス送信
             try:
-                ic(response.headers)
+                logger.debug("response.headers=%s", response.headers)
                 writer.write(response.to_bytes())
                 await writer.drain()  # 送信完了待ち
             except (ConnectionResetError, BrokenPipeError):
@@ -71,14 +71,13 @@ async def handle_client(
             if should_close:
                 break
     except HttpError as e:
-        ic(f"send HTTPError e:{e}")
+        logger.warning("send HTTPError e:%s", e)
         response = HTTPResponse(e.status)
         writer.write(response.to_bytes())
         await writer.drain()  # 送信完了待ち
 
     except Exception as e:
-        traceback.print_exc()
-        print(f"[-] Error: {e}")
+        logger.exception("Unhandled error in client handler: %s", e)
     finally:
         try:
             writer.close()
@@ -88,8 +87,7 @@ async def handle_client(
             pass
         except Exception as e:
             # その他のエラーは念のためログに出す（デバッグ用）
-            traceback.print_exc()
-            print(f"[-] Error during close: {e}")
+            logger.exception("Error during close: %s", e)
 
 
 MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
@@ -137,7 +135,7 @@ async def safe_load(
         async with asyncio.timeout(HEADER_TIMEOUT_SECONDS):
             header_block = await reader.readuntil(b"\r\n\r\n")
     except asyncio.LimitOverrunError:
-        print(f"[-] Error: Header too large from {peer_ip}")
+        logger.warning("Header too large from %s", peer_ip)
         raise HttpError(431)
     except (TimeoutError, asyncio.IncompleteReadError):
         return None
@@ -145,7 +143,7 @@ async def safe_load(
         return None
 
     if len(header_block) > MAX_HEADER_SIZE:
-        print(f"[-] Error: Header too large from {peer_ip}")
+        logger.warning("Header too large from %s", peer_ip)
         raise HttpError(431)
 
     header_part = header_block[:-4]
@@ -153,7 +151,7 @@ async def safe_load(
 
     # 413 Payload Too Large
     if content_length >= MAX_BODY_SIZE:
-        print(f"[-] Error: Body too large ({content_length} bytes) from {peer_ip}")
+        logger.warning("Body too large (%s bytes) from %s", content_length, peer_ip)
         raise HttpError(413)
 
     if content_length == 0:

@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 
 import uvloop
 
@@ -10,14 +11,17 @@ import signal
 import sys
 
 import hcl
-from icecream import ic
 
 try:
     from src.server.config_model import AppConfig, RouteConfig, ServerConfig
     from src.server.core import HTTPServer
+    from src.server.logging_config import setup_logging
 except ModuleNotFoundError:
     from server.config_model import AppConfig, RouteConfig, ServerConfig
     from server.core import HTTPServer
+    from server.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -65,17 +69,12 @@ def parse_args():
         default="127.0.0.1",
         help="Bind host (default: 127.0.0.1)",
     )
-    parser.add_argument(
-        "--disable_ic",
-        action="store_true",
-        default=False,
-        help="Disable ic rich print",
-    )
 
     return parser.parse_args()
 
 
 def run_worker_process(host, port, config: ServerConfig):
+    setup_logging(app_name="myhttpserver")
     server = HTTPServer(host=host, port=port, config=config)
 
     try:
@@ -85,6 +84,7 @@ def run_worker_process(host, port, config: ServerConfig):
 
 
 def main():
+    setup_logging(app_name="myhttpserver")
     args = parse_args()
 
     with open(args.config, "r") as fp:
@@ -95,12 +95,8 @@ def main():
     # webrootを実態パスに
     webroot = os.path.abspath(args.webroot)
     if not os.path.isdir(webroot):
-        ic(f"No such directory: {webroot}")
+        logger.error("No such directory: %s", webroot)
         sys.exit(1)
-
-    if args.disable_ic:
-        print("Disable IC")
-        ic.disable()
 
     port_override = args.http_port if args.http_port is not None else args.port
     if port_override is not None:
@@ -111,14 +107,16 @@ def main():
             root=webroot,
             routes=[RouteConfig(path="/", type="static", index=["index.html"])],
         )
-        print(f"Starting compatibility server on {args.host}:{port_override} ...")
+        logger.info(
+            "Starting compatibility server on %s:%s ...", args.host, port_override
+        )
         run_worker_process(args.host, port_override, compat_server)
         return
 
     def shutdown_handler(signum, frame):
-        ic("Server shutdown...")
+        logger.info("Server shutdown...")
 
-        ic("MOCK: Server stop")
+        logger.info("MOCK: Server stop")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown_handler)
@@ -136,15 +134,15 @@ def main():
 
     workers = []
 
-    print(f"CPU: {cpu_count}")
-    print(f"Servers: {server_count}")
-    print(f"Workers per server: {workers_per_server}")
-    print(f"Total workers: {sum(workers_per_server)}")
+    logger.info("CPU: %s", cpu_count)
+    logger.info("Servers: %s", server_count)
+    logger.info("Workers per server: %s", workers_per_server)
+    logger.info("Total workers: %s", sum(workers_per_server))
 
     # ワーカープロセスの起動
     for server, worker_count in zip(app_config.servers, workers_per_server):
         port = server.port
-        print(f"Starting {worker_count} workers on port {port}...")
+        logger.info("Starting %s workers on port %s...", worker_count, port)
 
         for _ in range(worker_count):
             p = multiprocessing.Process(
@@ -159,14 +157,15 @@ def main():
         for p in workers:
             p.join()
     except KeyboardInterrupt:
-        print("\nStopping all workers...")
+        logger.info("Stopping all workers...")
         for p in workers:
             if p.is_alive():
                 p.terminate()
                 p.join()
 
 
-print("Server stopped.")
-
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        logger.info("Server stopped.")

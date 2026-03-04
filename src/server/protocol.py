@@ -1,5 +1,5 @@
 import gzip
-import traceback
+import logging
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Dict, Optional
@@ -8,6 +8,8 @@ import zstandard as zstd
 
 from .http_date import http_date_now
 from .reason_phrase import get_http_reason_phrase
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,5 +125,5 @@ def parse_request(data: bytes, remote_addr: str) -> Optional[HTTPRequest]:
             headers=headers,
         )
     except Exception:
-        traceback.print_exc()
+        logger.exception("Failed to parse request from remote_addr=%s", remote_addr)
         return None

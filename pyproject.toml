@@ -9,7 +9,6 @@ description = ""
 dependencies = [
     "aiofiles>=25.1.0",
     "httpx>=0.28.1",
-    "icecream>=2.1.10",
     "pyhcl>=0.4.5",
     "uvloop>=0.22.1",
     "xxhash>=3.6.0",

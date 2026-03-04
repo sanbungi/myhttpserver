@@ -1,13 +1,12 @@
 import ipaddress
+import logging
 import os
 import stat as statmod
-import traceback
 from datetime import timezone
 from email.utils import formatdate, parsedate_to_datetime
 from typing import Optional
 
 import httpx
-from icecream import ic
 
 from .config_model import ServerConfig
 from .etag_utils import weak_etag_equal
@@ -20,6 +19,8 @@ from .range_requests import (
     parse_range_header,
     should_apply_range_for_if_range,
 )
+
+logger = logging.getLogger(__name__)
 
 # 静的ファイルのルートディレクトリ
 _CWD = os.getcwd()
@@ -158,7 +159,7 @@ async def resolve_route(
         route = find_best_route(server, request_path)
 
         allow_methods = route.methods
-        ic(allow_methods)
+        logger.debug("allow_methods=%s", allow_methods)
 
         # OPTIONSメソッドは先に確認
         if request.method == "OPTIONS":
@@ -169,7 +170,7 @@ async def resolve_route(
         if allow_methods and request.method not in allow_methods:
             allowed_methods_str = ", ".join(route.methods)
 
-            ic(allowed_methods_str)
+            logger.debug("allowed_methods_str=%s", allowed_methods_str)
             return HTTPResponse(
                 status=405,
                 body=f"405 Method Not Allowed\nAllowed: {allowed_methods_str}",
@@ -184,7 +185,7 @@ async def resolve_route(
                 ip = ipaddress.ip_address(request.remote_addr)
                 network = ipaddress.ip_network(route.security.ip_allow[0], strict=False)
                 if ip in network:
-                    ic(f"Access OK: {ip} in {network}")
+                    logger.debug("Access OK: %s in %s", ip, network)
                     pass
                 else:
                     return HTTPResponse(400)
@@ -208,7 +209,7 @@ async def resolve_route(
             range_header = _get_header_case_insensitive(request.headers, "range")
             if_range_header = _get_header_case_insensitive(request.headers, "if-range")
             if range_header:
-                ic(range_header)
+                logger.debug("range_header=%s", range_header)
 
             current_etag = _join_etag_with_encoding(base_etag, encoding)
             etag_header = _format_etag_header(current_etag)
@@ -330,8 +331,8 @@ async def resolve_route(
 
             proxy_request_path = request_path[len(route.path) :]
 
-            ic(proxy_request_path)
-            ic(upstrean_url)
+            logger.debug("proxy_request_path=%s", proxy_request_path)
+            logger.debug("upstream_url=%s", upstrean_url)
             for header_name in list(send_header):
                 if header_name.lower() == "host":
                     send_header.pop(header_name)
@@ -346,8 +347,8 @@ async def resolve_route(
                         timeout=10.0,
                     )
 
-                ic(resp.status_code)
-                ic(dict(resp.headers))
+                logger.debug("upstream status=%s", resp.status_code)
+                logger.debug("upstream headers=%s", dict(resp.headers))
 
                 _content_type = resp.headers["content-type"]
                 resp.headers.pop("content-type", None)
@@ -360,25 +361,24 @@ async def resolve_route(
                     header=dict(resp.headers),
                 )
             except httpx.RequestError as e:
-                ic(f"Upstream error: {e}")
-                traceback.print_exc()
+                logger.exception("Upstream error: %s", e)
                 return HTTPResponse(504)
 
         # 固定値のレスポンス
         elif route.type == "raw":
             if route.respond:
-                ic(route)
+                logger.debug("route=%s", route)
                 return HTTPResponse(route.respond.status, route.respond.body)
             return HTTPResponse(500)
 
         # リダイレクト
         elif route.type == "redirect":
-            ic("REDIRECT")
-            ic(route.redirect)
+            logger.debug("REDIRECT")
+            logger.debug("route.redirect=%s", route.redirect)
             redirect_url = route.redirect.url
             if "$request_uri" in redirect_url:
                 redirect_url = redirect_url.replace("$request_uri", request.path)
-                ic(f"Rewrite URL {redirect_url}")
+                logger.debug("Rewrite URL %s", redirect_url)
 
             return HTTPResponse(
                 status=route.redirect.code, header={"Location": redirect_url}
@@ -387,10 +387,10 @@ async def resolve_route(
             return HTTPResponse(500)
 
     except PermissionError:
-        traceback.print_exc()
+        logger.warning("Permission error while resolving route", exc_info=True)
         return HTTPResponse(403)
     except Exception:
-        traceback.print_exc()
+        logger.exception("Unexpected error while resolving route")
         return HTTPResponse(500)
 
 
