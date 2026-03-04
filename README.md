@@ -1,18 +1,31 @@
 # myhttpserver
 
-## Hot to Run
+## How to Run
 
 パッケージ管理はuvを使用している
 
 ```bash
-// 環境作成
+# 環境作成
 uv sync
 
-// 起動
+# 起動
 uv run src/main.py
 
-// テスト
+# テスト
 uv run pytest .
+```
+
+## Install as CLI (`myhttpserver`)
+
+```bash
+# wheel作成
+uv build
+
+# wheelをインストール
+pip install dist/myhttpserver-0.0.1-py3-none-any.whl
+
+# CLIで起動
+myhttpserver --webroot ./html --config ./config/example.hcl --port 8080
 ```
 
 ## 処理フロー
