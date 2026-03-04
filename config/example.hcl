@@ -1,5 +1,5 @@
 global {
-  worker_processes = 8
+  worker_processes = 4
   max_connections  = 1024
   timeout_keepalive = "65s"
   timeout = "30s"
@@ -19,8 +19,8 @@ server "main-server" {
 
   tls {
     enabled = true
-    cert    = "/etc/certs/example.com.crt"
-    key     = "/etc/certs/example.com.key"
+    cert    = "/home/work/work/myhttpserver/server.crt"
+    key     = "/home/work/work/myhttpserver/server.key"
     min_version = "TLS1.2"
   }
 
@@ -66,7 +66,7 @@ server "main-server" {
     type = "proxy"
     
     backend {
-      upstream = "http://localhost:9000"
+      upstream = "http://localhost:8080"
       timeout  = "30s"
       
       # プロキシ時にヘッダーを書き換える

@@ -10,9 +10,8 @@ import httpx
 from icecream import ic
 
 from .config_model import ServerConfig
-from .FileCache import FileCache
-
 from .etag_utils import weak_etag_equal
+from .FileCache import FileCache
 from .protocol import HTTPRequest, HTTPResponse
 from .range_requests import (
     build_multipart_byteranges_body,
@@ -290,7 +289,9 @@ async def resolve_route(
                         if request.method == "HEAD":
                             partial_body = b""
 
-                        response = HTTPResponse(206, partial_body, headers, content_type)
+                        response = HTTPResponse(
+                            206, partial_body, headers, content_type
+                        )
                         response.disable_compression()
                         return response
 
@@ -325,6 +326,12 @@ async def resolve_route(
         # リバースプロキシ
         elif route.type == "proxy":
             send_header = dict(request.headers)
+            upstrean_url = route.backend.upstream
+
+            proxy_request_path = "/" + request_path[len(route.path) :]
+
+            ic(proxy_request_path)
+            ic(upstrean_url)
             for header_name in list(send_header):
                 if header_name.lower() == "host":
                     send_header.pop(header_name)
@@ -333,7 +340,7 @@ async def resolve_route(
                 async with httpx.AsyncClient() as client:
                     resp = await client.request(
                         method=request.method,
-                        url=f"http://localhost:1234{request_path}",
+                        url=f"{upstrean_url}{proxy_request_path}",
                         headers=send_header,
                         content=request.body,
                         timeout=10.0,
@@ -351,7 +358,7 @@ async def resolve_route(
             except httpx.RequestError as e:
                 ic(f"Upstream error: {e}")
                 traceback.print_exc()
-                return None
+                return HTTPResponse(504)
 
         # 固定値のレスポンス
         elif route.type == "raw":
