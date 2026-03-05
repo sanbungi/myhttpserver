@@ -65,10 +65,38 @@ jobs:
               raise SystemExit(0)
 
           root = ET.parse(xml_path).getroot()
-          tests = int(root.attrib.get("tests", 0))
-          failures = int(root.attrib.get("failures", 0))
-          errors = int(root.attrib.get("errors", 0))
-          skipped = int(root.attrib.get("skipped", 0))
+
+          def _to_int(value):
+              try:
+                  return int(value)
+              except (TypeError, ValueError):
+                  return 0
+
+          suites = []
+          if root.tag == "testsuite":
+              suites = [root]
+          elif root.tag == "testsuites":
+              suites = list(root.findall("testsuite"))
+
+          if suites:
+              tests = sum(_to_int(s.attrib.get("tests")) for s in suites)
+              failures = sum(_to_int(s.attrib.get("failures")) for s in suites)
+              errors = sum(_to_int(s.attrib.get("errors")) for s in suites)
+              skipped = sum(_to_int(s.attrib.get("skipped")) for s in suites)
+          else:
+              testcases = list(root.iter("testcase"))
+              tests = len(testcases)
+              failures = 0
+              errors = 0
+              skipped = 0
+              for testcase in testcases:
+                  if testcase.find("failure") is not None:
+                      failures += 1
+                  if testcase.find("error") is not None:
+                      errors += 1
+                  if testcase.find("skipped") is not None:
+                      skipped += 1
+
           passed = max(0, tests - failures - errors - skipped)
 
           lines.append(f"- Total: **{tests}**")
