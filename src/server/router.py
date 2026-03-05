@@ -150,6 +150,33 @@ def _format_etag_header(etag: Optional[str]) -> Optional[str]:
     return f'"{etag}"'
 
 
+def _apply_route_access_control(
+    request: HTTPRequest, route
+) -> Optional[HTTPResponse]:
+    security = route.security
+    if not security:
+        return None
+
+    if not security.ip_allow:
+        logger.debug("Access NG: security configured but ip_allow is empty")
+        return HTTPResponse(400)
+
+    try:
+        ip = ipaddress.ip_address(request.remote_addr)
+    except ValueError:
+        logger.debug("Access NG: invalid remote addr=%s", request.remote_addr)
+        return HTTPResponse(400)
+
+    for allow_cidr in security.ip_allow:
+        network = ipaddress.ip_network(allow_cidr, strict=False)
+        if ip in network:
+            logger.debug("Access OK: %s in %s", ip, network)
+            return None
+
+    logger.debug("Access NG: %s is not in allow list", ip)
+    return HTTPResponse(400)
+
+
 async def resolve_route(
     request: HTTPRequest, server: ServerConfig, encoding: str = ""
 ) -> HTTPResponse:
@@ -181,16 +208,12 @@ async def resolve_route(
         if not route:
             return HTTPResponse(404)
 
-        if route.type == "static":
-            if route.security:
-                ip = ipaddress.ip_address(request.remote_addr)
-                network = ipaddress.ip_network(route.security.ip_allow[0], strict=False)
-                if ip in network:
-                    logger.debug("Access OK: %s in %s", ip, network)
-                    pass
-                else:
-                    return HTTPResponse(400)
+        if route.type in {"static", "proxy"}:
+            access_control_resp = _apply_route_access_control(request, route)
+            if access_control_resp is not None:
+                return access_control_resp
 
+        if route.type == "static":
             if request_path == "/":
                 index_file = route.index[0] if route.index else "index.html"
                 server_file_path = build_server_file_path(

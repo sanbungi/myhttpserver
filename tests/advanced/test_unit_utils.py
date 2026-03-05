@@ -7,6 +7,7 @@ RFC 2616 の主要要件を新 async 実装レイヤーで検証する:
 - Section 14.23: Host ヘッダー要件
 """
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +20,7 @@ from src.server.router import (
     get_content_type,
     get_preferred_encoding,
     normalize_request_path,
+    resolve_route,
 )
 from src.server.worker import vetify_request
 
@@ -159,3 +161,44 @@ class TestRouterHelpers:
 
         route = find_best_route(server, "/unknown")
         assert route.path == "/"
+
+
+class TestRouteAccessControl:
+    """Route security.ip_allow が static/proxy 双方に適用されることを確認。"""
+
+    @staticmethod
+    def _request(path: str) -> HTTPRequest:
+        return HTTPRequest(
+            method="GET",
+            path=path,
+            version="HTTP/1.1",
+            remote_addr="127.0.0.1",
+            headers={"Host": "localhost"},
+            body=b"",
+        )
+
+    def test_static_route_blocks_non_allow_ip(self, tmp_path: Path):
+        route = SimpleNamespace(
+            path="/admin",
+            type="static",
+            methods=["GET"],
+            index=[],
+            security=SimpleNamespace(ip_allow=["10.0.0.0/24"]),
+        )
+        server = SimpleNamespace(routes=[route], root=str(tmp_path))
+
+        response = asyncio.run(resolve_route(self._request("/admin/index.html"), server))
+        assert response.status == 400
+
+    def test_proxy_route_blocks_non_allow_ip(self, tmp_path: Path):
+        route = SimpleNamespace(
+            path="/v1",
+            type="proxy",
+            methods=["GET"],
+            security=SimpleNamespace(ip_allow=["10.0.0.0/24"]),
+            backend=None,
+        )
+        server = SimpleNamespace(routes=[route], root=str(tmp_path))
+
+        response = asyncio.run(resolve_route(self._request("/v1/users"), server))
+        assert response.status == 400
