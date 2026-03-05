@@ -17,3 +17,6 @@ logs/
 bench_reports/
 *.zip
 *.bin
+
+*.crt
+*.key
