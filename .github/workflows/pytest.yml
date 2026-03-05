@@ -33,4 +33,78 @@ jobs:
         run: uv sync --dev
 
       - name: Run pytest
-        run: uv run pytest tests/ --server-mode=config-http
+        run: uv run pytest tests/ --server-mode=config-http --junitxml=pytest-results.xml
+
+      - name: Upload pytest JUnit XML
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-junitxml-${{ github.run_id }}-${{ github.run_attempt }}
+          path: pytest-results.xml
+          if-no-files-found: warn
+
+      - name: Publish failed tests to Job Summary
+        if: ${{ always() }}
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          xml_path = Path("pytest-results.xml")
+
+          if not summary_path:
+              raise SystemExit("GITHUB_STEP_SUMMARY is not available")
+
+          lines = ["## Pytest Result Summary", ""]
+          if not xml_path.exists():
+              lines.append("- `pytest-results.xml` not found. Pytest may have terminated before report generation.")
+              with open(summary_path, "a", encoding="utf-8") as f:
+                  f.write("\n".join(lines) + "\n")
+              raise SystemExit(0)
+
+          root = ET.parse(xml_path).getroot()
+          tests = int(root.attrib.get("tests", 0))
+          failures = int(root.attrib.get("failures", 0))
+          errors = int(root.attrib.get("errors", 0))
+          skipped = int(root.attrib.get("skipped", 0))
+          passed = max(0, tests - failures - errors - skipped)
+
+          lines.append(f"- Total: **{tests}**")
+          lines.append(f"- Passed: **{passed}**")
+          lines.append(f"- Failed: **{failures}**")
+          lines.append(f"- Errors: **{errors}**")
+          lines.append(f"- Skipped: **{skipped}**")
+          lines.append("")
+
+          failed_cases = []
+          for testcase in root.iter("testcase"):
+              failure = testcase.find("failure")
+              error = testcase.find("error")
+              if failure is None and error is None:
+                  continue
+              detail = failure if failure is not None else error
+              classname = testcase.attrib.get("classname", "")
+              name = testcase.attrib.get("name", "")
+              nodeid = f"{classname}::{name}" if classname else name
+              message = (detail.attrib.get("message") or "").strip()
+              message = " ".join(message.split())
+              if len(message) > 180:
+                  message = message[:177] + "..."
+              failed_cases.append((nodeid, message))
+
+          if failed_cases:
+              lines.append("### Failed Tests")
+              lines.append("")
+              for nodeid, message in failed_cases:
+                  if message:
+                      lines.append(f"- `{nodeid}`: {message}")
+                  else:
+                      lines.append(f"- `{nodeid}`")
+          else:
+              lines.append("No failed tests detected in JUnit XML.")
+
+          with open(summary_path, "a", encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+          PY
