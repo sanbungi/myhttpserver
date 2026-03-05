@@ -288,9 +288,6 @@ async def resolve_route(
                                 partial_range, len(content)
                             )
                         }
-                        if request.method == "HEAD":
-                            partial_body = b""
-
                         response = HTTPResponse(
                             206, partial_body, headers, content_type
                         )
@@ -303,9 +300,6 @@ async def resolve_route(
                         content_type=content_type,
                         resource_size=len(content),
                     )
-                    if request.method == "HEAD":
-                        multipart_body = b""
-
                     response = HTTPResponse(
                         206,
                         multipart_body,
@@ -314,9 +308,6 @@ async def resolve_route(
                     )
                     response.disable_compression()
                     return response
-
-            if request.method == "HEAD":
-                content = b""
 
             return HTTPResponse(
                 200,

@@ -57,6 +57,18 @@ def test_head_same_headers_as_get(http_socket):
     assert b"Content-Length:" in get_headers
     assert b"Content-Length:" in head_headers
 
+    get_content_length = next(
+        line.split(b":", 1)[1].strip()
+        for line in get_headers.split(b"\r\n")
+        if line.lower().startswith(b"content-length:")
+    )
+    head_content_length = next(
+        line.split(b":", 1)[1].strip()
+        for line in head_headers.split(b"\r\n")
+        if line.lower().startswith(b"content-length:")
+    )
+    assert get_content_length == head_content_length
+
 
 def test_post_not_allowed_on_static_files(http_socket):
     """Section 9.5: 静的ファイルサーバーはPOSTに405を返す"""

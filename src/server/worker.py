@@ -67,6 +67,8 @@ async def handle_client(
             try:
                 logger.debug("response.headers=%s", pretty_block(response.headers))
                 response_bytes = response.to_bytes()
+                if request.method == "HEAD":
+                    response_bytes = _strip_body_from_http_message(response_bytes)
                 writer.write(response_bytes)
                 await writer.drain()  # 送信完了待ち
                 log_access(
@@ -142,6 +144,13 @@ def _response_size(response: HTTPResponse) -> int:
         return max(0, int(content_length))
     except (TypeError, ValueError):
         return 0
+
+
+def _strip_body_from_http_message(raw_response: bytes) -> bytes:
+    header_end = raw_response.find(b"\r\n\r\n")
+    if header_end == -1:
+        return raw_response
+    return raw_response[: header_end + 4]
 
 
 def _parse_content_length(header_part: bytes) -> int:
