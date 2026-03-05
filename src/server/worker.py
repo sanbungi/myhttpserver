@@ -6,7 +6,11 @@ from typing import Optional, Tuple
 from .config_model import ServerConfig
 from .logging_config import log_access, pretty_block
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
-from .router import get_preferred_encoding, resolve_route
+from .router import (
+    apply_response_headers_from_config,
+    get_preferred_encoding,
+    resolve_route,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,8 @@ async def handle_client(
             else:
                 should_close = False
                 response.set_header("Connection", "keep-alive")
+
+            apply_response_headers_from_config(response, config, request.path)
 
             # レスポンス送信
             try:

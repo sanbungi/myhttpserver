@@ -1,5 +1,7 @@
 """RFC 2616 Section 14: ヘッダーフィールド定義のテスト"""
 
+import pytest
+
 
 def test_host_header_required(http_socket):
     """Section 14.23: HTTP/1.1ではHostヘッダーが必須"""
@@ -81,3 +83,20 @@ def test_keep_alive_connection(http_socket):
     response2 = http_socket.recv(4096)
     
     assert b"HTTP/1.1" in response2
+
+
+def test_config_headers_add_remove(http_socket, server_runtime):
+    """設定ファイルの server/route headers が反映される（config-http時のみ）"""
+    if server_runtime.mode != "config-http":
+        pytest.skip("requires --server-mode=config-http")
+
+    request = b"GET /index.html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+    http_socket.send(request)
+    response = http_socket.recv(4096)
+
+    header_block = response.split(b"\r\n\r\n", 1)[0]
+
+    assert b"X-Frame-Options: DENY" in header_block
+    assert b"Cache-Control: public, max-age=3600" in header_block
+    assert b"\r\nServer:" not in header_block
+    assert b"\r\nserver:" not in header_block

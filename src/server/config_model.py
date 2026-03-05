@@ -38,11 +38,41 @@ class HeadersConfig:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "HeadersConfig":
-        if not data:
+        if not isinstance(data, dict) or not data:
             return cls()
-        # HCLの記述ゆれ吸収 (set だったり add だったりする場合に対応)
-        add_headers = data.get("add", {}) or data.get("set", {})
-        return cls(add=add_headers, remove=data.get("remove", []))
+
+        # HCLの記述ゆれ吸収: add / set を統合し、set を後勝ちにする
+        merged_add: Dict[str, str] = {}
+        raw_add = data.get("add", {})
+        raw_set = data.get("set", {})
+        if isinstance(raw_add, dict):
+            merged_add.update(raw_add)
+        if isinstance(raw_set, dict):
+            merged_add.update(raw_set)
+
+        normalized_add: Dict[str, str] = {}
+        for raw_key, raw_value in merged_add.items():
+            if not isinstance(raw_key, str):
+                continue
+            key = raw_key.strip()
+            if not key:
+                continue
+            normalized_add[key] = str(raw_value)
+
+        raw_remove = data.get("remove", [])
+        if isinstance(raw_remove, str):
+            raw_remove = [raw_remove]
+
+        normalized_remove: List[str] = []
+        if isinstance(raw_remove, list):
+            for item in raw_remove:
+                if not isinstance(item, str):
+                    continue
+                name = item.strip()
+                if name:
+                    normalized_remove.append(name)
+
+        return cls(add=normalized_add, remove=normalized_remove)
 
 
 @dataclass

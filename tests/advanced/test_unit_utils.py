@@ -13,8 +13,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from src.server.config_model import HeadersConfig
 from src.server.protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from src.server.router import (
+    apply_response_headers_from_config,
     build_server_file_path,
     find_best_route,
     get_content_type,
@@ -202,3 +204,47 @@ class TestRouteAccessControl:
 
         response = asyncio.run(resolve_route(self._request("/v1/users"), server))
         assert response.status == 400
+
+
+class TestConfiguredResponseHeaders:
+    def test_server_headers_add_and_remove(self):
+        response = HTTPResponse(
+            status=200,
+            body=b"ok",
+            header={"server": "MyHTTPServer/0.1", "X-Powered-By": "legacy"},
+        )
+        server = SimpleNamespace(
+            headers=HeadersConfig(
+                add={"X-Frame-Options": "DENY"},
+                remove=["Server", "X-Powered-By"],
+            ),
+            routes=[SimpleNamespace(path="/", headers=None)],
+        )
+
+        apply_response_headers_from_config(response, server, "/")
+
+        assert "server" not in response.headers
+        assert "X-Powered-By" not in response.headers
+        assert response.headers["X-Frame-Options"] == "DENY"
+
+    def test_route_headers_override_server_headers(self):
+        response = HTTPResponse(status=200, body=b"ok")
+        server = SimpleNamespace(
+            headers=HeadersConfig(add={"X-App": "server", "X-Trace": "on"}),
+            routes=[
+                SimpleNamespace(path="/", headers=HeadersConfig(add={"X-App": "root"})),
+                SimpleNamespace(
+                    path="/admin",
+                    headers=HeadersConfig(
+                        add={"X-App": "route", "Cache-Control": "no-store"},
+                        remove=["X-Trace"],
+                    ),
+                ),
+            ],
+        )
+
+        apply_response_headers_from_config(response, server, "/admin/panel")
+
+        assert response.headers["X-App"] == "route"
+        assert response.headers["Cache-Control"] == "no-store"
+        assert "X-Trace" not in response.headers

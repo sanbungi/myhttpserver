@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx
 
-from .config_model import ServerConfig
+from .config_model import HeadersConfig, ServerConfig
 from .etag_utils import weak_etag_equal
 from .FileCache import FileCache
 from .logging_config import pretty_block, pretty_log
@@ -134,6 +134,46 @@ def _get_header_case_insensitive(headers: dict, name: str, default: str = "") ->
         if key.lower() == lowered_name:
             return value
     return default
+
+
+def _drop_header_case_insensitive(headers: dict, name: str) -> None:
+    lowered_name = name.lower()
+    for key in list(headers.keys()):
+        if key.lower() == lowered_name:
+            headers.pop(key, None)
+
+
+def _apply_headers_config(
+    response_headers: dict, headers_config: Optional[HeadersConfig]
+) -> None:
+    if not headers_config:
+        return
+
+    for raw_name in headers_config.remove:
+        if not isinstance(raw_name, str):
+            continue
+        name = raw_name.strip()
+        if name:
+            _drop_header_case_insensitive(response_headers, name)
+
+    for raw_key, raw_value in headers_config.add.items():
+        if not isinstance(raw_key, str):
+            continue
+        key = raw_key.strip()
+        if not key:
+            continue
+        _drop_header_case_insensitive(response_headers, key)
+        response_headers[key] = str(raw_value)
+
+
+def apply_response_headers_from_config(
+    response: HTTPResponse, server: ServerConfig, request_path: str
+) -> None:
+    _apply_headers_config(response.headers, server.headers)
+
+    route = find_best_route(server, normalize_request_path(request_path))
+    if route:
+        _apply_headers_config(response.headers, route.headers)
 
 
 def _join_etag_with_encoding(base_etag: Optional[str], encoding: str) -> Optional[str]:
