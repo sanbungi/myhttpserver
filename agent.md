@@ -9,7 +9,7 @@
 - Common commands:
   - Sync env: `uv sync`
   - Start server: `uv run src/main.py --host 0.0.0.0 --config config/example.hcl`
-  - Run tests: `uv run pytest .`
+  - Run tests: `uv run pytest tests/ --server-mode=config-http`
 
 ## Project Layout
 - `src/main.py`: Entry point; loads HCL config, initializes logging, starts worker processes.
