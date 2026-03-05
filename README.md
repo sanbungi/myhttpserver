@@ -8,6 +8,9 @@
 # 環境作成
 uv sync
 
+# テスト用静的アセット取得
+git submodule update --init --recursive
+
 # 起動
 uv run src/main.py
 
@@ -23,6 +26,9 @@ uv build
 
 # wheelをインストール
 pip install dist/myhttpserver-0.0.1-py3-none-any.whl
+
+# テスト用静的アセット取得
+git submodule update --init --recursive
 
 # CLIで起動
 myhttpserver --webroot ./html --config ./config/example.hcl --port 8080
