@@ -197,24 +197,30 @@ def _apply_route_access_control(
     if not security:
         return None
 
-    if not security.ip_allow:
-        logger.debug("Access NG: security configured but ip_allow is empty")
-        return HTTPResponse(400)
+    deny_all = bool(getattr(security, "deny_all", False))
+    if not deny_all:
+        logger.debug("Access SKIP: deny_all is disabled")
+        return None
+
+    ip_allow = list(getattr(security, "ip_allow", []) or [])
+    if not ip_allow:
+        logger.debug("Access NG: deny_all enabled and ip_allow is empty")
+        return HTTPResponse(403)
 
     try:
         ip = ipaddress.ip_address(request.remote_addr)
     except ValueError:
         logger.debug("Access NG: invalid remote addr=%s", request.remote_addr)
-        return HTTPResponse(400)
+        return HTTPResponse(403)
 
-    for allow_cidr in security.ip_allow:
+    for allow_cidr in ip_allow:
         network = ipaddress.ip_network(allow_cidr, strict=False)
         if ip in network:
             logger.debug("Access OK: %s in %s", ip, network)
             return None
 
     logger.debug("Access NG: %s is not in allow list", ip)
-    return HTTPResponse(400)
+    return HTTPResponse(403)
 
 
 async def resolve_route(

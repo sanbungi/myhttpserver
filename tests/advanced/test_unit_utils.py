@@ -166,7 +166,7 @@ class TestRouterHelpers:
 
 
 class TestRouteAccessControl:
-    """Route security.ip_allow が static/proxy 双方に適用されることを確認。"""
+    """Route security.deny_all に応じたアクセス制御を確認。"""
 
     @staticmethod
     def _request(path: str) -> HTTPRequest:
@@ -185,25 +185,39 @@ class TestRouteAccessControl:
             type="static",
             methods=["GET"],
             index=[],
-            security=SimpleNamespace(ip_allow=["10.0.0.0/24"]),
+            security=SimpleNamespace(deny_all=True, ip_allow=["10.0.0.0/24"]),
         )
         server = SimpleNamespace(routes=[route], root=str(tmp_path))
 
         response = asyncio.run(resolve_route(self._request("/admin/index.html"), server))
-        assert response.status == 400
+        assert response.status == 403
 
     def test_proxy_route_blocks_non_allow_ip(self, tmp_path: Path):
         route = SimpleNamespace(
             path="/v1",
             type="proxy",
             methods=["GET"],
-            security=SimpleNamespace(ip_allow=["10.0.0.0/24"]),
+            security=SimpleNamespace(deny_all=True, ip_allow=["10.0.0.0/24"]),
             backend=None,
         )
         server = SimpleNamespace(routes=[route], root=str(tmp_path))
 
         response = asyncio.run(resolve_route(self._request("/v1/users"), server))
-        assert response.status == 400
+        assert response.status == 403
+
+    def test_static_route_does_not_block_when_deny_all_false(self, tmp_path: Path):
+        (tmp_path / "index.html").write_text("ok", encoding="utf-8")
+        route = SimpleNamespace(
+            path="/",
+            type="static",
+            methods=["GET"],
+            index=["index.html"],
+            security=SimpleNamespace(deny_all=False, ip_allow=["10.0.0.0/24"]),
+        )
+        server = SimpleNamespace(routes=[route], root=str(tmp_path))
+
+        response = asyncio.run(resolve_route(self._request("/index.html"), server))
+        assert response.status == 200
 
 
 class TestConfiguredResponseHeaders:
