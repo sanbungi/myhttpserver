@@ -15,3 +15,5 @@ logs/
 # Benchmark
 .wrk2/
 bench_reports/
+*.zip
+*.bin
