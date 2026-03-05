@@ -25,6 +25,15 @@ wheels = [
 ]
 
 [[package]]
+name = "astor"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/21/75b771132fee241dfe601d39ade629548a9626d1d39f333fde31bc46febe/astor-0.8.1.tar.gz", hash = "sha256:6a6effda93f4e1ce9f618779b2dd1d9d84f1e32812c23a29b3fff6fd7f63fa5e", size = 35090, upload-time = "2019-12-10T01:50:35.51Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/88/97eef84f48fa04fbd6750e62dcceafba6c63c81b7ac1420856c8dcc0a3f9/astor-0.8.1-py2.py3-none-any.whl", hash = "sha256:070a54e890cefb5b3739d19f30f5a5ec840ffc9c50ffa7d23cc9fc1a38ebbfc5", size = 27488, upload-time = "2019-12-10T01:50:33.628Z" },
+]
+
+[[package]]
 name = "asttokens"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -171,6 +180,15 @@ wheels = [
 ]
 
 [[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -311,12 +329,14 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "black" },
+    { name = "graphviz" },
     { name = "ipdb" },
     { name = "py-spy" },
     { name = "pytest" },
     { name = "requests" },
     { name = "ruff" },
     { name = "snakeviz" },
+    { name = "staticfg" },
 ]
 
 [package.metadata]
@@ -332,12 +352,14 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=25.12.0" },
+    { name = "graphviz", specifier = ">=0.21" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "py-spy", specifier = ">=0.4.1" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "ruff", specifier = ">=0.15.1" },
     { name = "snakeviz", specifier = ">=2.2.2" },
+    { name = "staticfg", specifier = ">=0.9.5" },
 ]
 
 [[package]]
@@ -558,6 +580,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
+]
+
+[[package]]
+name = "staticfg"
+version = "0.9.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "astor" },
+    { name = "graphviz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d5/c9/50d0ba54130c6c82598f95ac5b388359664df9f30360863ef690fe0afff3/staticfg-0.9.5.tar.gz", hash = "sha256:19ac946be56500026297d98b9a2c9a7928ecc47cb8fa53f7585e969856d16ffe", size = 7915, upload-time = "2020-06-11T08:08:40.813Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/3e/405f0d0c9e7e9c49eed3355eb7339f87aa7904f9947e717a6aa9ca0aefa4/staticfg-0.9.5-py3-none-any.whl", hash = "sha256:968091fb26ecfdd68d28078de39568c07273f3f3aa107f6352929790e1f2338a", size = 11831, upload-time = "2020-06-11T08:08:39.705Z" },
 ]
 
 [[package]]

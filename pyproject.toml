@@ -27,12 +27,14 @@ pythonpath = ["."]
 [dependency-groups]
 dev = [
     "black>=25.12.0",
+    "graphviz>=0.21",
     "ipdb>=0.13.13",
     "py-spy>=0.4.1",
     "pytest>=8.0.0",
     "requests>=2.32.5",
     "ruff>=0.15.1",
     "snakeviz>=2.2.2",
+    "staticfg>=0.9.5",
 ]
 
 [tool.pyright]
