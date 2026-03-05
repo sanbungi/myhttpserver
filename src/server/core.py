@@ -10,6 +10,32 @@ from .worker import handle_client
 
 logger = logging.getLogger(__name__)
 
+_TLS_MIN_VERSION_BY_NAME = {
+    "TLS1": ssl.TLSVersion.TLSv1,
+    "TLS1.0": ssl.TLSVersion.TLSv1,
+    "TLSV1": ssl.TLSVersion.TLSv1,
+    "TLSV1.0": ssl.TLSVersion.TLSv1,
+    "TLS1.1": ssl.TLSVersion.TLSv1_1,
+    "TLSV1.1": ssl.TLSVersion.TLSv1_1,
+    "TLS1.2": ssl.TLSVersion.TLSv1_2,
+    "TLSV1.2": ssl.TLSVersion.TLSv1_2,
+}
+if hasattr(ssl.TLSVersion, "TLSv1_3"):
+    _TLS_MIN_VERSION_BY_NAME["TLS1.3"] = ssl.TLSVersion.TLSv1_3
+    _TLS_MIN_VERSION_BY_NAME["TLSV1.3"] = ssl.TLSVersion.TLSv1_3
+
+
+def _resolve_tls_min_version(min_version: str) -> ssl.TLSVersion:
+    candidate = str(min_version).strip().upper().replace("_", ".").replace("-", ".")
+    resolved = _TLS_MIN_VERSION_BY_NAME.get(candidate)
+    if resolved is not None:
+        return resolved
+
+    logger.warning(
+        "Unknown tls.min_version=%r. Falling back to TLS1.2.", min_version
+    )
+    return ssl.TLSVersion.TLSv1_2
+
 
 class HTTPServer:
     def __init__(self, host="127.0.0.1", port=8080, config: ServerConfig = None):
@@ -55,6 +81,7 @@ class HTTPServer:
         if use_ssl:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             _tls = self.config.tls
+            context.minimum_version = _resolve_tls_min_version(_tls.min_version)
             try:
                 context.load_cert_chain(certfile=_tls.cert, keyfile=_tls.key)
             except Exception as e:

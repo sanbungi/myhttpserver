@@ -8,12 +8,14 @@ RFC 2616 の主要要件を新 async 実装レイヤーで検証する:
 """
 
 import asyncio
+import ssl
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from src.server.config_model import HeadersConfig
+from src.server.core import _resolve_tls_min_version
 from src.server.protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from src.server.router import (
     apply_response_headers_from_config,
@@ -262,3 +264,19 @@ class TestConfiguredResponseHeaders:
         assert response.headers["X-App"] == "route"
         assert response.headers["Cache-Control"] == "no-store"
         assert "X-Trace" not in response.headers
+
+
+class TestTlsMinVersion:
+    def test_supports_tls12_names(self):
+        assert _resolve_tls_min_version("TLS1.2") == ssl.TLSVersion.TLSv1_2
+        assert _resolve_tls_min_version("tlsv1.2") == ssl.TLSVersion.TLSv1_2
+
+    def test_supports_tls13_when_runtime_has_it(self):
+        expected = getattr(ssl.TLSVersion, "TLSv1_3", ssl.TLSVersion.TLSv1_2)
+        assert _resolve_tls_min_version("TLS1.3") == expected
+
+    def test_invalid_value_falls_back_to_tls12(self, caplog):
+        with caplog.at_level("WARNING"):
+            resolved = _resolve_tls_min_version("TLS9.9")
+        assert resolved == ssl.TLSVersion.TLSv1_2
+        assert "Unknown tls.min_version" in caplog.text
