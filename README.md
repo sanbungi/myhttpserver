@@ -15,7 +15,7 @@ git submodule update --init --recursive
 uv run src/main.py
 
 # テスト
-uv run pytest .
+uv run pytest tests --server-mode=config-http
 ```
 
 ## 処理フロー
@@ -35,16 +35,6 @@ uv run pytest .
 	- 圧縮
 	- Etag生成
 - keep-alive確認
-
-## 処理フロー
-
-- ソケット生成・スレッド管理
-- TCPレベルのやり取り
-	- 異常なパケットを確認
-- HTTPとしてパース
-- 検証
-- ルーティング
-- 正常なレスポンス生成
 
 途中で失敗すれば即座に500エラーを返す。
 
