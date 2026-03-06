@@ -6,11 +6,17 @@ on:
       - main
     paths:
       - "**/*.py"
+      - ".gitmodules"
+      - "test-assets"
+      - "test-assets/**"
   pull_request:
     branches:
       - main
     paths:
       - "**/*.py"
+      - ".gitmodules"
+      - "test-assets"
+      - "test-assets/**"
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
