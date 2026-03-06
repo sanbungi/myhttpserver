@@ -1,19 +1,21 @@
 import argparse
 import asyncio
 import logging
-
-import uvloop
-
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 import multiprocessing
 import os
 import signal
 import sys
 
 import hcl
+import uvloop
 
 try:
-    from src.server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
+    from src.server.config_model import (
+        AppConfig,
+        LoggingConfig,
+        RouteConfig,
+        ServerConfig,
+    )
     from src.server.core import HTTPServer
     from src.server.logging_config import setup_logging
 except ModuleNotFoundError:
@@ -22,6 +24,9 @@ except ModuleNotFoundError:
     from server.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
+
+# ループのエンジンに高パフォーマンスなuvloopを用いる
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 def parse_args():
@@ -88,9 +93,7 @@ def _build_logging_kwargs(logging_config: LoggingConfig) -> dict:
     }
 
 
-def run_worker_process(
-    host, port, config: ServerConfig, logging_config: LoggingConfig
-):
+def run_worker_process(host, port, config: ServerConfig, logging_config: LoggingConfig):
     setup_logging(**_build_logging_kwargs(logging_config))
     server = HTTPServer(host=host, port=port, config=config)
 
@@ -103,6 +106,7 @@ def run_worker_process(
 def main():
     args = parse_args()
 
+    # config読み込み
     with open(args.config, "r") as fp:
         raw_obj = hcl.load(fp)
 
@@ -115,6 +119,7 @@ def main():
         logger.error("No such directory: %s", webroot)
         sys.exit(1)
 
+    # Configが指定されない場合に、仮のConfigを生成して起動する（テスト用）
     port_override = args.http_port if args.http_port is not None else args.port
     if port_override is not None:
         compat_server = ServerConfig(
@@ -135,23 +140,19 @@ def main():
     def shutdown_handler(signum, frame):
         logger.info("Server shutdown...")
 
-        logger.info("MOCK: Server stop")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
+    # CPUコアの割当計算、各プロセスに最低1コアは割当たるように
     cpu_count = multiprocessing.cpu_count()
     server_count = len(app_config.servers)
     worker_processes = max(1, app_config.global_settings.worker_processes)
-
     base, remainder = divmod(worker_processes, server_count)
-
     workers_per_server = [
         base + (1 if i < remainder else 0) for i in range(server_count)
     ]
-
-    workers = []
 
     logger.info("CPU: %s", cpu_count)
     logger.info("Servers: %s", server_count)
@@ -159,6 +160,7 @@ def main():
     logger.info("Total workers: %s", sum(workers_per_server))
 
     # ワーカープロセスの起動
+    workers = []
     for server, worker_count in zip(app_config.servers, workers_per_server):
         port = server.port
         logger.info("Starting %s workers on port %s...", worker_count, port)

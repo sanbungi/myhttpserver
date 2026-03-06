@@ -1,6 +1,6 @@
 import time
 
-# 定数テーブル
+# 定数テーブルによる高速化
 _WD = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _MO = (
     "Jan",

@@ -31,9 +31,7 @@ def _resolve_tls_min_version(min_version: str) -> ssl.TLSVersion:
     if resolved is not None:
         return resolved
 
-    logger.warning(
-        "Unknown tls.min_version=%r. Falling back to TLS1.2.", min_version
-    )
+    logger.warning("Unknown tls.min_version=%r. Falling back to TLS1.2.", min_version)
     return ssl.TLSVersion.TLSv1_2
 
 

@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-
 SUPPORTED_COMPRESSION_METHODS = ("gzip", "zstd")
 DEFAULT_COMPRESSION_METHODS = ["gzip", "zstd"]
 

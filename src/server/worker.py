@@ -12,6 +12,23 @@ from .router import (
     resolve_route,
 )
 
+MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
+MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
+HEADER_TIMEOUT_SECONDS = 5.0
+BODY_TIMEOUT_SECONDS = 10.0
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+HTTP_METHODS = {
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+    "PATCH",
+    "TRACE",
+    "CONNECT",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,23 +43,27 @@ async def handle_client(
     try:
         while True:
             request = None
+            # パケットのサイズが大きければcloseされる。
             loaded_data = await safe_load(reader, writer, ip)
 
+            # 切断、タイムアウト、またはエラー送信済みのためループを抜けて接続を切る
             if loaded_data is None:
-                # 切断、タイムアウト、またはエラー送信済みのためループを抜けて接続を切る
                 break
 
             header_part, full_body = loaded_data
 
-            # リクエスト解析
+            # ヘッダーからリクエスト解析
             request = parse_request(header_part, ip)
             if not request:
                 break
-            request.body = full_body
-            vetify_request(request)
 
+            request.body = full_body
+
+            # 各種規約に準じた構造になっているか確認
+            vetify_request(request)
             logger.debug("request=%s", pretty_block(request))
 
+            # 対応している圧縮系s機を確認
             accept_encoding = _get_header_case_insensitive(
                 request.headers, "accept-encoding"
             )
@@ -52,14 +73,15 @@ async def handle_client(
 
             # ルーティング実行
             response = await resolve_route(request, config, encoding=encoding)
+            # 圧縮
             response.set_compress(encoding)
-
+            # サーバー名付与
             response.set_header("Server", "MyHTTPServer/0.1")
 
             # Keep-Alive 判定
-            conn_header = _get_header_case_insensitive(request.headers, "connection")
-
-            conn_header = conn_header.lower()
+            conn_header = _get_header_case_insensitive(
+                request.headers, "connection"
+            ).lower()
             if request.version == "HTTP/1.0" or conn_header == "close":
                 should_close = True
                 response.set_header("Connection", "close")
@@ -67,16 +89,22 @@ async def handle_client(
                 should_close = False
                 response.set_header("Connection", "keep-alive")
 
+            # Configに設定に沿って、返したくないヘッダーを削除
             apply_response_headers_from_config(response, config, request.path)
 
             # レスポンス送信
             try:
                 logger.debug("response.headers=%s", pretty_block(response.headers))
                 response_bytes = response.to_bytes()
+                # HEADならBodyは削り取り、送らない
                 if request.method == "HEAD":
                     response_bytes = _strip_body_from_http_message(response_bytes)
                 writer.write(response_bytes)
-                await writer.drain()  # 送信完了待ち
+
+                # 送信完了待ち
+                await writer.drain()
+
+                # 正常アクセスログ記録
                 log_access(
                     remote_addr=ip,
                     method=request.method,
@@ -98,7 +126,10 @@ async def handle_client(
         response = HTTPResponse(e.status)
         response_bytes = response.to_bytes()
         writer.write(response_bytes)
-        await writer.drain()  # 送信完了待ち
+
+        await writer.drain()
+
+        # 規定されたエラーコードを返したアクセスログ記録
         log_access(
             remote_addr=ip,
             method=request.method if request else "-",
@@ -127,10 +158,71 @@ async def handle_client(
             logger.exception("Error during close: %s", e)
 
 
-MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
-MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
-HEADER_TIMEOUT_SECONDS = 5.0
-BODY_TIMEOUT_SECONDS = 10.0
+async def safe_load(
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, peer_ip: str
+) -> Optional[Tuple[bytes, bytes]]:
+    try:
+        async with asyncio.timeout(HEADER_TIMEOUT_SECONDS):
+            header_block = await reader.readuntil(b"\r\n\r\n")
+    except asyncio.LimitOverrunError:
+        logger.warning("Header too large from %s", peer_ip)
+        raise HttpError(431)
+    except (TimeoutError, asyncio.IncompleteReadError):
+        return None
+    except ConnectionResetError:
+        return None
+
+    if len(header_block) > MAX_HEADER_SIZE:
+        logger.warning("Header too large from %s", peer_ip)
+        raise HttpError(431)
+
+    header_part = header_block[:-4]
+    content_length = _parse_content_length(header_part)
+
+    # 413 Payload Too Large
+    if content_length >= MAX_BODY_SIZE:
+        logger.warning("Body too large (%s bytes) from %s", content_length, peer_ip)
+        raise HttpError(413)
+
+    if content_length == 0:
+        return header_part, b""
+
+    try:
+        async with asyncio.timeout(BODY_TIMEOUT_SECONDS):
+            full_body = await reader.readexactly(content_length)
+    except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
+        return None
+
+    return header_part, full_body
+
+
+def contains_control_chars(s: str) -> bool:
+    return _CONTROL_CHAR_RE.search(s) is not None
+
+
+def vetify_request(request: HTTPRequest):
+    headers = request.headers
+
+    if request.version == "HTTP/1.1" and not _get_header_case_insensitive(
+        headers, "host"
+    ):
+        raise HttpError(400, "MISSING_HOST")
+
+    if len(request.path) > 255:
+        raise HttpError(414, "REQUEST_URL_TOO_LONG")
+
+    if len(request.headers) > 255:
+        raise HttpError(400, "TOO_MANY_HEADERS")
+
+    if request.version not in ("HTTP/1.1", "HTTP/1.0"):
+        raise HttpError(400, "INVALID_HTTP_VERSION")
+
+    if request.method not in HTTP_METHODS:
+        raise HttpError(400, "INVALID_HTTP_METHOD")
+
+    for header_name, header_value in request.headers.items():
+        if contains_control_chars(header_name) or contains_control_chars(header_value):
+            raise HttpError(400, "DISALLOW_CONTAILS_CONTROL_CHARCTER")
 
 
 def _get_header_case_insensitive(headers: dict, name: str, default: str = "") -> str:
@@ -178,91 +270,3 @@ def _parse_content_length(header_part: bytes) -> int:
         return content_length
 
     return 0
-
-
-async def safe_load(
-    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, peer_ip: str
-) -> Optional[Tuple[bytes, bytes]]:
-    try:
-        async with asyncio.timeout(HEADER_TIMEOUT_SECONDS):
-            header_block = await reader.readuntil(b"\r\n\r\n")
-    except asyncio.LimitOverrunError:
-        logger.warning("Header too large from %s", peer_ip)
-        raise HttpError(431)
-    except (TimeoutError, asyncio.IncompleteReadError):
-        return None
-    except ConnectionResetError:
-        return None
-
-    if len(header_block) > MAX_HEADER_SIZE:
-        logger.warning("Header too large from %s", peer_ip)
-        raise HttpError(431)
-
-    header_part = header_block[:-4]
-    content_length = _parse_content_length(header_part)
-
-    # 413 Payload Too Large
-    if content_length >= MAX_BODY_SIZE:
-        logger.warning("Body too large (%s bytes) from %s", content_length, peer_ip)
-        raise HttpError(413)
-
-    if content_length == 0:
-        return header_part, b""
-
-    try:
-        async with asyncio.timeout(BODY_TIMEOUT_SECONDS):
-            full_body = await reader.readexactly(content_length)
-    except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
-        return None
-
-    return header_part, full_body
-
-
-HTTP_METHODS = {
-    "GET",
-    "POST",
-    "PUT",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-    "PATCH",
-    "TRACE",
-    "CONNECT",
-}
-
-
-_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
-
-
-def contains_control_chars(s: str) -> bool:
-    return _CONTROL_CHAR_RE.search(s) is not None
-
-
-def vetify_request(request: HTTPRequest):
-    headers = request.headers
-
-    if request.version == "HTTP/1.1" and not _get_header_case_insensitive(
-        headers, "host"
-    ):
-        raise HttpError(400, "MISSING_HOST")
-
-    if len(request.path) > 255:
-        raise HttpError(414, "REQUEST_URL_TOO_LONG")
-
-    if len(request.headers) > 255:
-        raise HttpError(400, "TOO_MANY_HEADERS")
-
-    if request.version not in ("HTTP/1.1", "HTTP/1.0"):
-        raise HttpError(400, "INVALID_HTTP_VERSION")
-
-    if request.method not in HTTP_METHODS:
-        raise HttpError(400, "INVALID_HTTP_METHOD")
-
-    for header_name, header_value in request.headers.items():
-        if contains_control_chars(header_name) or contains_control_chars(header_value):
-            raise HttpError(400, "DISALLOW_CONTAILS_CONTROL_CHARCTER")
-
-
-# allow_methods = {"GET", "HEAD", "OPTIONS"}
-# if request.method not in allow_methods:
-#   raise HttpError(405, "METHOD NOT ALLOWED")

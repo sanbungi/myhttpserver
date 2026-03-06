@@ -31,6 +31,259 @@ _FILE_META_CACHE: dict[str, tuple[int, int, int, str, str]] = {}
 cache = FileCache()
 
 
+# ルーティング層
+async def resolve_route(
+    request: HTTPRequest, server: ServerConfig, encoding: str = ""
+) -> HTTPResponse:
+
+    request_path = normalize_request_path(request.path)
+
+    try:
+        # パスから使用するべきrouteを検索
+        route = find_best_route(server, request_path)
+        if not route:
+            return HTTPResponse(404)
+
+        allow_methods = route.methods
+        logger.debug("allow_methods=%s", pretty_log(allow_methods))
+
+        # OPTIONSメソッドは先に確認
+        if request.method == "OPTIONS":
+            allowed_methods_str = ", ".join(allow_methods or ["*"])
+            return HTTPResponse(204, header={"Allow": allowed_methods_str})
+
+        # 許可しているメソッドのチェック
+        if allow_methods and request.method not in allow_methods:
+            allowed_methods_str = ", ".join(route.methods)
+
+            logger.debug("allowed_methods_str=%s", allowed_methods_str)
+            return HTTPResponse(
+                status=405,
+                body=f"405 Method Not Allowed\nAllowed: {allowed_methods_str}",
+                header={"Allow": allowed_methods_str},
+            )
+
+        # アクセス制御
+        if route.type in {"static", "proxy"}:
+            access_control_resp = _apply_route_access_control(request, route)
+            if access_control_resp is not None:
+                return access_control_resp
+
+        # 静的ファイル配信
+        if route.type == "static":
+            # パス正規化
+            if request_path == "/":
+                index_file = route.index[0] if route.index else "index.html"
+                server_file_path = build_server_file_path(
+                    server.root, "/" + index_file.lstrip("/")
+                )
+            else:
+                server_file_path = build_server_file_path(server.root, request_path)
+
+            # キャッシュ用にファイルの最終変更時などを取得
+            meta = _get_file_meta(server_file_path)
+            if meta is None:
+                return HTTPResponse(404)
+
+            stat_result, last_modify, base_etag = meta
+            # /でパスが終わるなら、そのディレクトリのindex.htmlに転送させる。
+            if statmod.S_ISDIR(stat_result.st_mode):
+                return HTTPResponse(status=301, header={"Location": "index.html"})
+
+            # Rangeヘッダーの取得
+            range_header = _get_header_case_insensitive(request.headers, "range")
+            if_range_header = _get_header_case_insensitive(request.headers, "if-range")
+            if range_header:
+                logger.debug("range_header=%s", range_header)
+
+            # Etagによるキャッシュ
+            current_etag = _join_etag_with_encoding(base_etag, encoding)
+            etag_header = _format_etag_header(current_etag)
+
+            cache_hit = check_cache_if_none_match(request, current_etag)
+            if cache_hit:
+                headers = {
+                    "Last-Modified": last_modify,
+                    "Cache-Control": "max-age=3600",
+                    "Accept-Ranges": "bytes",
+                }
+                if etag_header:
+                    headers["ETag"] = etag_header
+                return HTTPResponse(304, header=headers)
+
+            # 2段目、if_modifiedによるキャッシュチェック
+            cache_hit = check_cache_if_modified_since(
+                request,
+                stat_result.st_mtime,
+                if_none_match_supported=True,
+            )
+            if cache_hit:
+                headers = {
+                    "Last-Modified": last_modify,
+                    "Cache-Control": "max-age=3600",
+                    "Accept-Ranges": "bytes",
+                }
+                if etag_header:
+                    headers["ETag"] = etag_header
+                return HTTPResponse(304, header=headers)
+
+            # 実ファイルパスからコンテンツタイプを推測
+            content_type, is_binary = get_content_type(server_file_path)
+
+            # バイナリならそのまま読む、テキストならエンコード
+            if is_binary:
+                content = cache.get_cached(server_file_path, mode="rb")
+                if content is cache.MISS:
+                    content = await cache.read_from_disk(server_file_path, mode="rb")
+            else:
+                text = cache.get_cached(server_file_path, mode="r")
+                if text is cache.MISS:
+                    text = await cache.read_from_disk(server_file_path, mode="r")
+                content = text.encode("utf-8")
+
+            # HACK max-ageが決め打ち
+            response_headers = {
+                "Last-Modified": last_modify,
+                "Cache-Control": "max-age=3600",
+                "Accept-Ranges": "bytes",
+            }
+
+            # etagを再度つける
+            if etag_header:
+                response_headers["ETag"] = etag_header
+
+            # Rangeレスポンス
+            if range_header and should_apply_range_for_if_range(
+                if_range_header, current_etag, last_modify
+            ):
+                parsed_range = parse_range_header(range_header, len(content))
+
+                # bytes以外はRangeを無視し、通常の200を返す
+                if parsed_range.unit_supported:
+                    # 指定された範囲が提供できない
+                    if not parsed_range.is_valid or not parsed_range.ranges:
+                        headers = response_headers | {
+                            "Content-Range": format_unsatisfied_content_range(
+                                len(content)
+                            )
+                        }
+                        response = HTTPResponse(416, b"", headers, content_type)
+                        response.disable_compression()
+                        return response
+
+                    # 範囲は1つ指定である
+                    if len(parsed_range.ranges) == 1:
+                        partial_range = parsed_range.ranges[0]
+                        partial_body = content[
+                            partial_range.start : partial_range.end + 1
+                        ]
+                        headers = response_headers | {
+                            "Content-Range": format_content_range(
+                                partial_range, len(content)
+                            )
+                        }
+                        response = HTTPResponse(
+                            206, partial_body, headers, content_type
+                        )
+                        response.disable_compression()
+                        return response
+
+                    # 複数の範囲指定がある場合
+                    multipart_type, multipart_body = build_multipart_byteranges_body(
+                        content=content,
+                        ranges=parsed_range.ranges,
+                        content_type=content_type,
+                        resource_size=len(content),
+                    )
+                    response = HTTPResponse(
+                        206,
+                        multipart_body,
+                        response_headers,
+                        multipart_type,
+                    )
+                    response.disable_compression()
+                    return response
+
+            return HTTPResponse(
+                200,
+                content,
+                response_headers,
+                content_type,
+            )
+
+        # リバースプロキシ
+        elif route.type == "proxy":
+            upstrean_url = route.backend.upstream
+            proxy_request_path = request_path[len(route.path) :]
+
+            logger.debug("proxy_request_path=%s", proxy_request_path)
+            logger.debug("upstream_url=%s", upstrean_url)
+
+            # プロキシ先にリクエストを送る前にHostヘッダー削除
+            send_header = dict(request.headers)
+            for header_name in list(send_header):
+                if header_name.lower() == "host":
+                    send_header.pop(header_name)
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    # HACK timeoutが決め打ち
+                    resp = await client.request(
+                        method=request.method,
+                        url=f"{upstrean_url}{proxy_request_path}",
+                        headers=send_header,
+                        content=request.body,
+                        timeout=10.0,
+                    )
+
+                logger.debug("upstream status=%s", resp.status_code)
+                logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
+
+                # 不要なヘッダー削除
+                _content_type = resp.headers["content-type"]
+                resp.headers.pop("content-type", None)
+                resp = drop_proxy_header(resp)
+
+                return HTTPResponse(
+                    status=resp.status_code,
+                    body=resp.content,
+                    content_type=_content_type,
+                    header=dict(resp.headers),
+                )
+            except httpx.RequestError as e:
+                logger.exception("Upstream error: %s", e)
+                return HTTPResponse(504)
+
+        # 固定値のレスポンス
+        elif route.type == "raw":
+            if route.respond:
+                logger.debug("route=%s", pretty_block(route))
+                return HTTPResponse(route.respond.status, route.respond.body)
+            return HTTPResponse(500)
+
+        # リダイレクト
+        elif route.type == "redirect":
+            logger.debug("REDIRECT")
+            logger.debug("route.redirect=%s", pretty_block(route.redirect))
+            redirect_url = route.redirect.url
+            if "$request_uri" in redirect_url:
+                redirect_url = redirect_url.replace("$request_uri", request.path)
+                logger.debug("Rewrite URL %s", redirect_url)
+
+            return HTTPResponse(
+                status=route.redirect.code, header={"Location": redirect_url}
+            )
+        else:
+            return HTTPResponse(500)
+
+    except PermissionError:
+        logger.warning("Permission error while resolving route", exc_info=True)
+        return HTTPResponse(403)
+    except Exception:
+        logger.exception("Unexpected error while resolving route")
+        return HTTPResponse(500)
+
+
 def _strip_trailing_slash(path: str) -> str:
     if path.endswith("/") and path != "/":
         return path[:-1]
@@ -166,16 +419,6 @@ def _apply_headers_config(
         response_headers[key] = str(raw_value)
 
 
-def apply_response_headers_from_config(
-    response: HTTPResponse, server: ServerConfig, request_path: str
-) -> None:
-    _apply_headers_config(response.headers, server.headers)
-
-    route = find_best_route(server, normalize_request_path(request_path))
-    if route:
-        _apply_headers_config(response.headers, route.headers)
-
-
 def _join_etag_with_encoding(base_etag: Optional[str], encoding: str) -> Optional[str]:
     if not base_etag:
         return None
@@ -190,9 +433,7 @@ def _format_etag_header(etag: Optional[str]) -> Optional[str]:
     return f'"{etag}"'
 
 
-def _apply_route_access_control(
-    request: HTTPRequest, route
-) -> Optional[HTTPResponse]:
+def _apply_route_access_control(request: HTTPRequest, route) -> Optional[HTTPResponse]:
     security = route.security
     if not security:
         return None
@@ -223,236 +464,14 @@ def _apply_route_access_control(
     return HTTPResponse(403)
 
 
-async def resolve_route(
-    request: HTTPRequest, server: ServerConfig, encoding: str = ""
-) -> HTTPResponse:
+def apply_response_headers_from_config(
+    response: HTTPResponse, server: ServerConfig, request_path: str
+) -> None:
+    _apply_headers_config(response.headers, server.headers)
 
-    request_path = normalize_request_path(request.path)
-
-    try:
-        route = find_best_route(server, request_path)
-
-        allow_methods = route.methods
-        logger.debug("allow_methods=%s", pretty_log(allow_methods))
-
-        # OPTIONSメソッドは先に確認
-        if request.method == "OPTIONS":
-            allowed_methods_str = ", ".join(allow_methods or ["*"])
-            return HTTPResponse(204, header={"Allow": allowed_methods_str})
-
-        # 許可メソッドのチェック
-        if allow_methods and request.method not in allow_methods:
-            allowed_methods_str = ", ".join(route.methods)
-
-            logger.debug("allowed_methods_str=%s", allowed_methods_str)
-            return HTTPResponse(
-                status=405,
-                body=f"405 Method Not Allowed\nAllowed: {allowed_methods_str}",
-                header={"Allow": allowed_methods_str},
-            )
-
-        if not route:
-            return HTTPResponse(404)
-
-        if route.type in {"static", "proxy"}:
-            access_control_resp = _apply_route_access_control(request, route)
-            if access_control_resp is not None:
-                return access_control_resp
-
-        if route.type == "static":
-            if request_path == "/":
-                index_file = route.index[0] if route.index else "index.html"
-                server_file_path = build_server_file_path(
-                    server.root, "/" + index_file.lstrip("/")
-                )
-            else:
-                server_file_path = build_server_file_path(server.root, request_path)
-
-            meta = _get_file_meta(server_file_path)
-            if meta is None:
-                return HTTPResponse(404)
-
-            stat_result, last_modify, base_etag = meta
-            if statmod.S_ISDIR(stat_result.st_mode):
-                return HTTPResponse(status=301, header={"Location": "index.html"})
-
-            range_header = _get_header_case_insensitive(request.headers, "range")
-            if_range_header = _get_header_case_insensitive(request.headers, "if-range")
-            if range_header:
-                logger.debug("range_header=%s", range_header)
-
-            current_etag = _join_etag_with_encoding(base_etag, encoding)
-            etag_header = _format_etag_header(current_etag)
-
-            cache_hit = check_cache_if_none_match(request, current_etag)
-            if cache_hit:
-                headers = {
-                    "Last-Modified": last_modify,
-                    "Cache-Control": "max-age=3600",
-                    "Accept-Ranges": "bytes",
-                }
-                if etag_header:
-                    headers["ETag"] = etag_header
-                return HTTPResponse(304, header=headers)
-
-            cache_hit = check_cache_if_modified_since(
-                request,
-                stat_result.st_mtime,
-                if_none_match_supported=True,
-            )
-            if cache_hit:
-                headers = {
-                    "Last-Modified": last_modify,
-                    "Cache-Control": "max-age=3600",
-                    "Accept-Ranges": "bytes",
-                }
-                if etag_header:
-                    headers["ETag"] = etag_header
-                return HTTPResponse(304, header=headers)
-
-            content_type, is_binary = get_content_type(server_file_path)
-
-            if is_binary:
-                content = cache.get_cached(server_file_path, mode="rb")
-                if content is cache.MISS:
-                    content = await cache.read_from_disk(server_file_path, mode="rb")
-            else:
-                text = cache.get_cached(server_file_path, mode="r")
-                if text is cache.MISS:
-                    text = await cache.read_from_disk(server_file_path, mode="r")
-                content = text.encode("utf-8")
-
-            response_headers = {
-                "Last-Modified": last_modify,
-                "Cache-Control": "max-age=3600",
-                "Accept-Ranges": "bytes",
-            }
-            if etag_header:
-                response_headers["ETag"] = etag_header
-
-            if range_header and should_apply_range_for_if_range(
-                if_range_header, current_etag, last_modify
-            ):
-                parsed_range = parse_range_header(range_header, len(content))
-
-                # bytes以外はRangeを無視し、通常の200を返す
-                if parsed_range.unit_supported:
-                    if not parsed_range.is_valid or not parsed_range.ranges:
-                        headers = response_headers | {
-                            "Content-Range": format_unsatisfied_content_range(
-                                len(content)
-                            )
-                        }
-                        response = HTTPResponse(416, b"", headers, content_type)
-                        response.disable_compression()
-                        return response
-
-                    if len(parsed_range.ranges) == 1:
-                        partial_range = parsed_range.ranges[0]
-                        partial_body = content[
-                            partial_range.start : partial_range.end + 1
-                        ]
-                        headers = response_headers | {
-                            "Content-Range": format_content_range(
-                                partial_range, len(content)
-                            )
-                        }
-                        response = HTTPResponse(
-                            206, partial_body, headers, content_type
-                        )
-                        response.disable_compression()
-                        return response
-
-                    multipart_type, multipart_body = build_multipart_byteranges_body(
-                        content=content,
-                        ranges=parsed_range.ranges,
-                        content_type=content_type,
-                        resource_size=len(content),
-                    )
-                    response = HTTPResponse(
-                        206,
-                        multipart_body,
-                        response_headers,
-                        multipart_type,
-                    )
-                    response.disable_compression()
-                    return response
-
-            return HTTPResponse(
-                200,
-                content,
-                response_headers,
-                content_type,
-            )
-
-        # リバースプロキシ
-        elif route.type == "proxy":
-            send_header = dict(request.headers)
-            upstrean_url = route.backend.upstream
-
-            proxy_request_path = request_path[len(route.path) :]
-
-            logger.debug("proxy_request_path=%s", proxy_request_path)
-            logger.debug("upstream_url=%s", upstrean_url)
-            for header_name in list(send_header):
-                if header_name.lower() == "host":
-                    send_header.pop(header_name)
-
-            try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.request(
-                        method=request.method,
-                        url=f"{upstrean_url}{proxy_request_path}",
-                        headers=send_header,
-                        content=request.body,
-                        timeout=10.0,
-                    )
-
-                logger.debug("upstream status=%s", resp.status_code)
-                logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
-
-                _content_type = resp.headers["content-type"]
-                resp.headers.pop("content-type", None)
-                resp = drop_proxy_header(resp)
-
-                return HTTPResponse(
-                    status=resp.status_code,
-                    body=resp.content,  # bytes
-                    content_type=_content_type,
-                    header=dict(resp.headers),
-                )
-            except httpx.RequestError as e:
-                logger.exception("Upstream error: %s", e)
-                return HTTPResponse(504)
-
-        # 固定値のレスポンス
-        elif route.type == "raw":
-            if route.respond:
-                logger.debug("route=%s", pretty_block(route))
-                return HTTPResponse(route.respond.status, route.respond.body)
-            return HTTPResponse(500)
-
-        # リダイレクト
-        elif route.type == "redirect":
-            logger.debug("REDIRECT")
-            logger.debug("route.redirect=%s", pretty_block(route.redirect))
-            redirect_url = route.redirect.url
-            if "$request_uri" in redirect_url:
-                redirect_url = redirect_url.replace("$request_uri", request.path)
-                logger.debug("Rewrite URL %s", redirect_url)
-
-            return HTTPResponse(
-                status=route.redirect.code, header={"Location": redirect_url}
-            )
-        else:
-            return HTTPResponse(500)
-
-    except PermissionError:
-        logger.warning("Permission error while resolving route", exc_info=True)
-        return HTTPResponse(403)
-    except Exception:
-        logger.exception("Unexpected error while resolving route")
-        return HTTPResponse(500)
+    route = find_best_route(server, normalize_request_path(request_path))
+    if route:
+        _apply_headers_config(response.headers, route.headers)
 
 
 # ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
