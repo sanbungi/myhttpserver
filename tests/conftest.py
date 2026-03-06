@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 
 HOST = "localhost"
 DEFAULT_PORT = 8001
-DEFAULT_CONFIG_PATH = "config/example.hcl"
+DEFAULT_CONFIG_PATH = "test-assets/config/example.hcl"
 DEFAULT_SERVER_MODE = "cli"
 DEFAULT_TARGET_SERVER = "main-server"
 DEFAULT_PORT_OFFSET = 1

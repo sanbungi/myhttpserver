@@ -29,14 +29,14 @@ def parse_args():
     parser.add_argument(
         "--webroot",
         type=str,
-        default="html/",
-        help="Web root directory (default: html/)",
+        default="test-assets/html/",
+        help="Web root directory (default: test-assets/html/)",
     )
     parser.add_argument(
         "--config",
         type=str,
-        default="config/example.hcl",
-        help="Configuration file path (default: config/example.hcl)",
+        default="test-assets/config/example.hcl",
+        help="Configuration file path (default: test-assets/config/example.hcl)",
     )
     parser.add_argument(
         "--port",

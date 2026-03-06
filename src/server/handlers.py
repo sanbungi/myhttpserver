@@ -21,10 +21,10 @@ def _read_file_sync(filepath):
 
 async def static_file_handler(request: HTTPRequest) -> HTTPResponse:
     # パスの正規化などは省略
-    file_path = f"./html/{request.path}"
+    file_path = f"./test-assets/html/{request.path}"
 
     if request.path == "/":
-        file_path = "./html/index.html"
+        file_path = "./test-assets/html/index.html"
 
     # ファイル読み込みを非ブロック化して実行
     content = await run_blocking(_read_file_sync, file_path)

@@ -31,7 +31,7 @@ pip install dist/myhttpserver-0.0.1-py3-none-any.whl
 git submodule update --init --recursive
 
 # CLIで起動
-myhttpserver --webroot ./html --config ./config/example.hcl --port 8080
+myhttpserver --webroot ./test-assets/html --config ./test-assets/config/example.hcl --port 8080
 ```
 
 ## 処理フロー

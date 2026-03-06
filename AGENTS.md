@@ -8,16 +8,16 @@
 - Use `uv` for package management and execution.
 - Common commands:
   - Sync env: `uv sync`
-  - Start server: `uv run src/main.py --host 0.0.0.0 --config config/example.hcl`
+  - Start server: `uv run src/main.py --host 0.0.0.0 --config test-assets/config/example.hcl`
   - Run tests: `uv run pytest tests/ --server-mode=config-http`
 
 ## Project Layout
 - `src/main.py`: Entry point; loads HCL config, initializes logging, starts worker processes.
 - `src/server/`: Core server implementation.
 - `tests/`: Basic/advanced tests based on `pytest`.
-- `config/example.hcl`: Server definitions (`main-server`, `redirect-server`, etc.).
+- `test-assets/config/example.hcl`: Server definitions (`main-server`, `redirect-server`, etc.).
 - `script/`: Dev helper scripts (debug/bench).
-- `html/`: Static content for serving tests.
+- `test-assets/html/`: Static content for serving tests.
 - `labs/`: Experimental snippets for new features; typically ignore.
 
 ## Core Files
@@ -47,7 +47,7 @@
 - Use `cli` mode only for quick checks with minimal config.
 - Frequently used options:
   - `--server-mode`: `config-http` / `cli`
-  - `--server-config-template`: HCL template path (default: `config/example.hcl`)
+  - `--server-config-template`: HCL template path (default: `test-assets/config/example.hcl`)
   - `--server-config-target`: target `server` name for base URL (default: `main-server`)
   - `--server-config-port-offset`: port-collision offset (default: `1`)
 - Typical runs:
@@ -59,7 +59,7 @@
 - Human-readable structured format centered on `global { ... }` and `server "name" { ... }`.
 - `global`: shared settings (worker count, timeouts, logging, etc.).
 - `server`: listener port, TLS, and `route` blocks (`static` / `proxy` / `redirect` / `raw`).
-- Keys/spec may change; treat `config/example.hcl` as source of truth.
+- Keys/spec may change; treat `test-assets/config/example.hcl` as source of truth.
 
 ## Implementation Rules (Perf/Maintainability)
 - No heavy work per request.
