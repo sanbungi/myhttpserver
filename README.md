@@ -18,21 +18,23 @@ uv run src/main.py
 uv run pytest .
 ```
 
-## Install as CLI (`myhttpserver`)
-
-```bash
-# wheel作成
-uv build
-
-# wheelをインストール
-pip install dist/myhttpserver-0.0.1-py3-none-any.whl
-
-# テスト用静的アセット取得
-git submodule update --init --recursive
-
-# CLIで起動
-myhttpserver --webroot ./test-assets/html --config ./test-assets/config/example.hcl --port 8080
-```
+## 処理フロー
+- スレッド管理 (同時に複数のリクエストを処理する)
+- tcpソケット管理
+	- レートリミット管理
+- パケット事前確認(異常なパケットを除外)
+- HTTPパース (文字列から構造化データに)
+- ルーティング
+	- 静的ファイル配信か、プロキシ処理かで分岐
+- アクセス制御
+- コンテンツ処理
+	- キャッシュ確認
+	- 実ファイル読み込み
+	- プロキシの場合、二次リクエストやり取り
+- レスポンス生成
+	- 圧縮
+	- Etag生成
+- keep-alive確認
 
 ## 処理フロー
 
@@ -45,6 +47,10 @@ myhttpserver --webroot ./test-assets/html --config ./test-assets/config/example.
 - 正常なレスポンス生成
 
 途中で失敗すれば即座に500エラーを返す。
+
+![server_flow](https://github.com/user-attachments/assets/1df010c1-473e-4e8c-8059-a9fc6e85f3a4)
+
+
 
 
 # 設定ファイル解説（仮）
