@@ -284,6 +284,7 @@ class GlobalConfig:
     max_connections: int = 1024
     timeout: str = "30s"
     timeout_keepalive: str = "65s"
+    ban_list_file: Optional[str] = None
     compression_methods: List[str] = field(
         default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
     )
@@ -298,6 +299,7 @@ class GlobalConfig:
             max_connections=data.get("max_connections", 1024),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
+            ban_list_file=data.get("ban_list_file"),
             compression_methods=normalize_compression_methods(
                 data.get("compression_methods")
             ),

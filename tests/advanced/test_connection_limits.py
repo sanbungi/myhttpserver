@@ -2,6 +2,7 @@ import logging
 import socket
 import time
 
+from src.server.config_model import GlobalConfig
 from src.server.ip_table import InMemoryIPTable
 
 HOST = "localhost"
@@ -90,3 +91,36 @@ class TestPerIPConnectionLimit:
                 retry_socket.close()
             for sock in sockets:
                 sock.close()
+
+
+class TestBanList:
+    def test_ban_list_supports_ip_and_cidr(self, tmp_path):
+        ban_file = tmp_path / "ban-list.txt"
+        ban_file.write_text(
+            "\n".join(
+                [
+                    "# single ip",
+                    "127.0.0.1",
+                    "",
+                    "# cidr",
+                    "10.10.0.0/24",
+                    "# unsupported range syntax",
+                    "192.168.0.1-192.168.0.20",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        table = InMemoryIPTable(
+            max_connections_per_ip=20,
+            ban_list_file=str(ban_file),
+        )
+
+        assert table.is_banned("127.0.0.1") is True
+        assert table.is_banned("10.10.0.99") is True
+        assert table.is_banned("10.10.1.1") is False
+        assert table.is_banned("192.168.0.3") is False
+
+    def test_global_config_reads_ban_list_file(self):
+        cfg = GlobalConfig.from_dict({"ban_list_file": "/tmp/ban-list.txt"})
+        assert cfg.ban_list_file == "/tmp/ban-list.txt"

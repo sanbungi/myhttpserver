@@ -47,16 +47,19 @@ async def handle_client(
     peer = writer.get_extra_info("peername")
     ip = _extract_peer_ip(peer)
     table = ip_table if ip_table is not None else _DEFAULT_IP_TABLE
+
+    if table.is_banned(ip):
+        logger.warning("Blocked banned IP: %s", ip)
+        await _send_banned_response(writer)
+        await _close_writer_quietly(writer)
+        return
+
     connection_acquired = table.try_acquire_connection(ip)
 
     if not connection_acquired:
         logger.warning("Per-IP connection limit exceeded for %s", ip)
         await _send_connection_limit_response(writer)
-        try:
-            writer.close()
-            await writer.wait_closed()
-        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
-            pass
+        await _close_writer_quietly(writer)
         return
 
     request: Optional[HTTPRequest] = None
@@ -240,6 +243,24 @@ async def _send_connection_limit_response(writer: asyncio.StreamWriter) -> None:
         response.set_header("Retry-After", "1")
         writer.write(response.to_bytes())
         await writer.drain()
+    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+        return
+
+
+async def _send_banned_response(writer: asyncio.StreamWriter) -> None:
+    try:
+        response = HTTPResponse(403)
+        response.set_header("Connection", "close")
+        writer.write(response.to_bytes())
+        await writer.drain()
+    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+        return
+
+
+async def _close_writer_quietly(writer: asyncio.StreamWriter) -> None:
+    try:
+        writer.close()
+        await writer.wait_closed()
     except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
         return
 

@@ -111,6 +111,7 @@ def run_worker_process(
     logging_config: LoggingConfig,
     shared_ip_connections=None,
     shared_ip_lock=None,
+    ban_list_file: str | None = None,
     debug_ip_table: bool = False,
 ):
     setup_logging(**_build_logging_kwargs(logging_config))
@@ -119,6 +120,7 @@ def run_worker_process(
         max_connections_per_ip=MAX_CONNECTIONS_PER_IP,
         active_connections=shared_ip_connections,
         lock=shared_ip_lock,
+        ban_list_file=ban_list_file,
         debug_enabled=debug_ip_table,
     )
     server = HTTPServer(host=host, port=port, config=config, ip_table=ip_table)
@@ -163,6 +165,7 @@ def main():
             port_override,
             compat_server,
             app_config.global_settings.logging,
+            ban_list_file=app_config.global_settings.ban_list_file,
             debug_ip_table=args.debug_ip_table,
         )
         return
@@ -209,6 +212,7 @@ def main():
                         app_config.global_settings.logging,
                         shared_ip_connections,
                         shared_ip_lock,
+                        app_config.global_settings.ban_list_file,
                         args.debug_ip_table,
                     ),
                 )
