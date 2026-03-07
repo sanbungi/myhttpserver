@@ -1,3 +1,4 @@
+import logging
 import socket
 import time
 
@@ -39,6 +40,20 @@ class TestInMemoryIPTable:
         assert table.get_active_connections(ip) == 1
         table.release_connection(ip)
         assert table.get_active_connections(ip) == 0
+
+    def test_debug_logging_enabled(self, caplog):
+        caplog.set_level(logging.INFO, logger="src.server.ip_table")
+        table = InMemoryIPTable(max_connections_per_ip=1, debug_enabled=True)
+        ip = "127.0.0.1"
+
+        assert table.try_acquire_connection(ip) is True
+        assert table.try_acquire_connection(ip) is False
+        table.release_connection(ip)
+
+        messages = [rec.getMessage() for rec in caplog.records]
+        assert any("event=acquire" in msg for msg in messages)
+        assert any("event=deny" in msg for msg in messages)
+        assert any("event=release" in msg for msg in messages)
 
 
 class TestPerIPConnectionLimit:

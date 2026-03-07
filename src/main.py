@@ -79,6 +79,12 @@ def parse_args():
         default="127.0.0.1",
         help="Bind host (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--debug-ip-table",
+        action="store_true",
+        default=False,
+        help="Enable realtime IP table logs (acquire/release/deny)",
+    )
 
     return parser.parse_args()
 
@@ -105,6 +111,7 @@ def run_worker_process(
     logging_config: LoggingConfig,
     shared_ip_connections=None,
     shared_ip_lock=None,
+    debug_ip_table: bool = False,
 ):
     setup_logging(**_build_logging_kwargs(logging_config))
     prime_autoindex_cache_for_server(config)
@@ -112,6 +119,7 @@ def run_worker_process(
         max_connections_per_ip=MAX_CONNECTIONS_PER_IP,
         active_connections=shared_ip_connections,
         lock=shared_ip_lock,
+        debug_enabled=debug_ip_table,
     )
     server = HTTPServer(host=host, port=port, config=config, ip_table=ip_table)
 
@@ -151,7 +159,11 @@ def main():
             "Starting compatibility server on %s:%s ...", args.host, port_override
         )
         run_worker_process(
-            args.host, port_override, compat_server, app_config.global_settings.logging
+            args.host,
+            port_override,
+            compat_server,
+            app_config.global_settings.logging,
+            debug_ip_table=args.debug_ip_table,
         )
         return
 
@@ -197,6 +209,7 @@ def main():
                         app_config.global_settings.logging,
                         shared_ip_connections,
                         shared_ip_lock,
+                        args.debug_ip_table,
                     ),
                 )
                 p.start()
