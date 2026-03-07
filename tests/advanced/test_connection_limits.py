@@ -124,3 +124,9 @@ class TestBanList:
     def test_global_config_reads_ban_list_file(self):
         cfg = GlobalConfig.from_dict({"ban_list_file": "/tmp/ban-list.txt"})
         assert cfg.ban_list_file == "/tmp/ban-list.txt"
+
+    def test_global_config_reads_nested_ban_list_file(self):
+        cfg = GlobalConfig.from_dict(
+            {"global": {"ban_list_file": "/tmp/ban-list-nested.txt"}}
+        )
+        assert cfg.ban_list_file == "/tmp/ban-list-nested.txt"

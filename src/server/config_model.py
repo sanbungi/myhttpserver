@@ -294,12 +294,16 @@ class GlobalConfig:
     def from_dict(cls, data: Dict) -> "GlobalConfig":
         if not data:
             return cls()
+        nested_global = data.get("global")
+        nested_ban_list_file = None
+        if isinstance(nested_global, dict):
+            nested_ban_list_file = nested_global.get("ban_list_file")
         return cls(
             worker_processes=data.get("worker_processes", 1),
             max_connections=data.get("max_connections", 1024),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
-            ban_list_file=data.get("ban_list_file"),
+            ban_list_file=data.get("ban_list_file") or nested_ban_list_file,
             compression_methods=normalize_compression_methods(
                 data.get("compression_methods")
             ),
