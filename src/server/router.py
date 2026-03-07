@@ -90,55 +90,61 @@ async def resolve_route(
             # /でパスが終わるなら、そのディレクトリのindex.htmlに転送させる。
             if statmod.S_ISDIR(stat_result.st_mode):
                 if getattr(route, "autoindex", False):
-                    autoindex = get_cached_autoindex_page(
-                        server_file_path, request_path
-                    )
-                    if autoindex is None:
-                        return HTTPResponse(404)
+                    index_meta = _find_directory_index_meta(server_file_path, route.index)
+                    if index_meta is not None:
+                        server_file_path, stat_result, last_modify, base_etag = (
+                            index_meta
+                        )
+                    else:
+                        autoindex = get_cached_autoindex_page(
+                            server_file_path, request_path
+                        )
+                        if autoindex is None:
+                            return HTTPResponse(404)
 
-                    autoindex_content, auto_last_modified, auto_mtime, auto_etag = (
-                        autoindex
-                    )
-                    auto_etag_header = _format_etag_header(auto_etag)
+                        autoindex_content, auto_last_modified, auto_mtime, auto_etag = (
+                            autoindex
+                        )
+                        auto_etag_header = _format_etag_header(auto_etag)
 
-                    cache_hit = check_cache_if_none_match(request, auto_etag)
-                    if cache_hit:
+                        cache_hit = check_cache_if_none_match(request, auto_etag)
+                        if cache_hit:
+                            headers = {
+                                "Last-Modified": auto_last_modified,
+                                "Cache-Control": "max-age=3600",
+                            }
+                            if auto_etag_header:
+                                headers["ETag"] = auto_etag_header
+                            return HTTPResponse(304, header=headers)
+
+                        cache_hit = check_cache_if_modified_since(
+                            request,
+                            auto_mtime,
+                            if_none_match_supported=True,
+                        )
+                        if cache_hit:
+                            headers = {
+                                "Last-Modified": auto_last_modified,
+                                "Cache-Control": "max-age=3600",
+                            }
+                            if auto_etag_header:
+                                headers["ETag"] = auto_etag_header
+                            return HTTPResponse(304, header=headers)
+
                         headers = {
                             "Last-Modified": auto_last_modified,
                             "Cache-Control": "max-age=3600",
                         }
                         if auto_etag_header:
                             headers["ETag"] = auto_etag_header
-                        return HTTPResponse(304, header=headers)
-
-                    cache_hit = check_cache_if_modified_since(
-                        request,
-                        auto_mtime,
-                        if_none_match_supported=True,
-                    )
-                    if cache_hit:
-                        headers = {
-                            "Last-Modified": auto_last_modified,
-                            "Cache-Control": "max-age=3600",
-                        }
-                        if auto_etag_header:
-                            headers["ETag"] = auto_etag_header
-                        return HTTPResponse(304, header=headers)
-
-                    headers = {
-                        "Last-Modified": auto_last_modified,
-                        "Cache-Control": "max-age=3600",
-                    }
-                    if auto_etag_header:
-                        headers["ETag"] = auto_etag_header
-                    return HTTPResponse(
-                        status=200,
-                        body=autoindex_content,
-                        header=headers,
-                        content_type="text/html; charset=utf-8",
-                    )
-
-                return HTTPResponse(status=301, header={"Location": "index.html"})
+                        return HTTPResponse(
+                            status=200,
+                            body=autoindex_content,
+                            header=headers,
+                            content_type="text/html; charset=utf-8",
+                        )
+                else:
+                    return HTTPResponse(status=301, header={"Location": "index.html"})
 
             # Rangeヘッダーの取得
             range_header = _get_header_case_insensitive(request.headers, "range")
@@ -426,6 +432,45 @@ def build_server_file_path(server_root: str, request_path: str) -> str:
         safe_segments.append(segment)
 
     return _join_root_and_relative(server_root, "/".join(safe_segments))
+
+
+def _find_directory_index_meta(
+    directory_path: str, route_index: Optional[list[str]]
+) -> Optional[tuple[str, os.stat_result, str, str]]:
+    index_candidates = route_index or ["index.html"]
+
+    for raw_candidate in index_candidates:
+        if not isinstance(raw_candidate, str):
+            continue
+
+        candidate = raw_candidate.strip().lstrip("/")
+        if not candidate:
+            continue
+
+        safe_segments = []
+        rejected = False
+        for segment in candidate.split("/"):
+            if segment in {"", "."}:
+                continue
+            if segment == "..":
+                rejected = True
+                break
+            safe_segments.append(segment)
+        if rejected or not safe_segments:
+            continue
+
+        index_path = os.path.join(directory_path, *safe_segments)
+        meta = _get_file_meta(index_path)
+        if meta is None:
+            continue
+
+        index_stat, last_modified, etag_base = meta
+        if statmod.S_ISDIR(index_stat.st_mode):
+            continue
+
+        return index_path, index_stat, last_modified, etag_base
+
+    return None
 
 
 def _get_header_case_insensitive(headers: dict, name: str, default: str = "") -> str:

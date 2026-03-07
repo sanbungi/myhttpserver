@@ -20,12 +20,12 @@ def _request(path: str, headers: dict | None = None) -> HTTPRequest:
     )
 
 
-def _server(tmp_path):
+def _server(tmp_path, index=None):
     route = SimpleNamespace(
         path="/public",
         type="static",
         methods=["GET", "HEAD", "OPTIONS"],
-        index=[],
+        index=index if index is not None else [],
         autoindex=True,
         security=None,
         headers=None,
@@ -82,3 +82,19 @@ def test_autoindex_uses_startup_snapshot(tmp_path):
     assert response.status == 200
     body = response.body.decode("utf-8")
     assert "runtime.txt" not in body
+
+
+def test_autoindex_prefers_directory_index_not_root_index(tmp_path):
+    public = tmp_path / "public"
+    public.mkdir(parents=True)
+    (tmp_path / "index.html").write_text("root index", encoding="utf-8")
+    (public / "index.html").write_text("public index", encoding="utf-8")
+
+    server = _server(tmp_path)
+    prime_autoindex_cache_for_server(server)
+
+    response = asyncio.run(resolve_route(_request("/public"), server))
+    assert response.status == 200
+    body = response.body.decode("utf-8")
+    assert "public index" in body
+    assert "root index" not in body
