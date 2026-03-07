@@ -10,6 +10,7 @@ import hcl
 import uvloop
 
 try:
+    from src.server.autoindex_page import prime_autoindex_cache_for_server
     from src.server.config_model import (
         AppConfig,
         LoggingConfig,
@@ -19,6 +20,7 @@ try:
     from src.server.core import HTTPServer
     from src.server.logging_config import setup_logging
 except ModuleNotFoundError:
+    from server.autoindex_page import prime_autoindex_cache_for_server
     from server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
     from server.core import HTTPServer
     from server.logging_config import setup_logging
@@ -95,6 +97,7 @@ def _build_logging_kwargs(logging_config: LoggingConfig) -> dict:
 
 def run_worker_process(host, port, config: ServerConfig, logging_config: LoggingConfig):
     setup_logging(**_build_logging_kwargs(logging_config))
+    prime_autoindex_cache_for_server(config)
     server = HTTPServer(host=host, port=port, config=config)
 
     try:

@@ -30,6 +30,18 @@ def normalize_route_path(path: str) -> str:
     return path or "/"
 
 
+def normalize_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        candidate = value.strip().lower()
+        if candidate in {"1", "true", "yes", "on"}:
+            return True
+        if candidate in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
 @dataclass
 class HeadersConfig:
     add: Dict[str, str] = field(default_factory=dict)  # set or add
@@ -200,6 +212,7 @@ class RouteConfig:
     type: str
     methods: Optional[List[str]] = None
     index: List[str] = field(default_factory=list)
+    autoindex: bool = False
     headers: Optional[HeadersConfig] = None
     backend: Optional[BackendConfig] = None
     respond: Optional[RespondConfig] = None
@@ -212,6 +225,7 @@ class RouteConfig:
             path=normalize_route_path(path),
             type=data.get("type", "static"),
             index=data.get("index", []),
+            autoindex=normalize_bool(data.get("autoindex", False)),
             methods=data.get("methods", {}),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
             backend=BackendConfig.from_dict(data.get("backend", {})),

@@ -8,6 +8,7 @@ from typing import Optional
 
 import httpx
 
+from .autoindex_page import get_cached_autoindex_page
 from .config_model import HeadersConfig, ServerConfig
 from .etag_utils import weak_etag_equal
 from .FileCache import FileCache
@@ -88,6 +89,55 @@ async def resolve_route(
             stat_result, last_modify, base_etag = meta
             # /でパスが終わるなら、そのディレクトリのindex.htmlに転送させる。
             if statmod.S_ISDIR(stat_result.st_mode):
+                if getattr(route, "autoindex", False):
+                    autoindex = get_cached_autoindex_page(
+                        server_file_path, request_path
+                    )
+                    if autoindex is None:
+                        return HTTPResponse(404)
+
+                    autoindex_content, auto_last_modified, auto_mtime, auto_etag = (
+                        autoindex
+                    )
+                    auto_etag_header = _format_etag_header(auto_etag)
+
+                    cache_hit = check_cache_if_none_match(request, auto_etag)
+                    if cache_hit:
+                        headers = {
+                            "Last-Modified": auto_last_modified,
+                            "Cache-Control": "max-age=3600",
+                        }
+                        if auto_etag_header:
+                            headers["ETag"] = auto_etag_header
+                        return HTTPResponse(304, header=headers)
+
+                    cache_hit = check_cache_if_modified_since(
+                        request,
+                        auto_mtime,
+                        if_none_match_supported=True,
+                    )
+                    if cache_hit:
+                        headers = {
+                            "Last-Modified": auto_last_modified,
+                            "Cache-Control": "max-age=3600",
+                        }
+                        if auto_etag_header:
+                            headers["ETag"] = auto_etag_header
+                        return HTTPResponse(304, header=headers)
+
+                    headers = {
+                        "Last-Modified": auto_last_modified,
+                        "Cache-Control": "max-age=3600",
+                    }
+                    if auto_etag_header:
+                        headers["ETag"] = auto_etag_header
+                    return HTTPResponse(
+                        status=200,
+                        body=autoindex_content,
+                        header=headers,
+                        content_type="text/html; charset=utf-8",
+                    )
+
                 return HTTPResponse(status=301, header={"Location": "index.html"})
 
             # Rangeヘッダーの取得
