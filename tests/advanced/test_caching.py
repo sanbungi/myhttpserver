@@ -469,3 +469,29 @@ class TestConditionalCombinations:
         )
         # リソースが存在しないので404
         assert resp.status_code == 404
+
+
+class TestErrorPageConditionalCaching:
+    """共通エラーページの条件付きリクエスト"""
+
+    def test_common_error_page_has_etag(self, server):
+        resp = requests.get(f"{server}/nonexistent.html", timeout=REQUEST_TIMEOUT)
+        assert resp.status_code == 404
+        etag = resp.headers.get("ETag", "")
+        assert etag, "Common error page should include ETag"
+        assert etag.startswith('"') or etag.startswith('W/"')
+
+    def test_error_page_if_none_match_returns_304(self, server):
+        first = requests.get(f"{server}/nonexistent.html", timeout=REQUEST_TIMEOUT)
+        assert first.status_code == 404
+        etag = first.headers.get("ETag", "")
+        assert etag, "ETag header must be present"
+
+        second = requests.get(
+            f"{server}/nonexistent.html",
+            headers={"If-None-Match": etag},
+            timeout=REQUEST_TIMEOUT,
+        )
+        assert second.status_code == 304
+        assert len(second.content) == 0
+        assert second.headers.get("ETag", "") == etag

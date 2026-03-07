@@ -4,6 +4,7 @@ import re
 from typing import Optional, Tuple
 
 from .config_model import ServerConfig
+from .etag_utils import weak_etag_equal
 from .logging_config import log_access, pretty_block
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import (
@@ -73,6 +74,8 @@ async def handle_client(
 
             # ルーティング実行
             response = await resolve_route(request, config, encoding=encoding)
+            if _get_header_case_insensitive(request.headers, "if-none-match"):
+                response.prepare_default_error_validators()
             # 圧縮
             response.set_compress(encoding)
             # サーバー名付与
@@ -91,6 +94,7 @@ async def handle_client(
 
             # Configに設定に沿って、返したくないヘッダーを削除
             apply_response_headers_from_config(response, config, request.path)
+            _apply_if_none_match_precondition(request, response)
 
             # レスポンス送信
             try:
@@ -249,6 +253,39 @@ def _strip_body_from_http_message(raw_response: bytes) -> bytes:
     if header_end == -1:
         return raw_response
     return raw_response[: header_end + 4]
+
+
+def _apply_if_none_match_precondition(
+    request: HTTPRequest, response: HTTPResponse
+) -> None:
+    if response.status in {304, 412}:
+        return
+
+    current_etag = _get_header_case_insensitive(response.headers, "etag")
+    if not current_etag:
+        return
+
+    raw_tag = _get_header_case_insensitive(request.headers, "if-none-match")
+    if not raw_tag:
+        return
+
+    raw_tag = raw_tag.strip()
+    matched = raw_tag == "*"
+    if not matched:
+        for tag in raw_tag.split(","):
+            if weak_etag_equal(tag.strip(), current_etag):
+                matched = True
+                break
+
+    if not matched:
+        return
+
+    if request.method in {"GET", "HEAD"}:
+        response.status = 304
+    else:
+        response.status = 412
+    response.body = b""
+    response.disable_compression()
 
 
 def _parse_content_length(header_part: bytes) -> int:

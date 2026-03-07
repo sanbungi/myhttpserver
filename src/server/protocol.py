@@ -6,7 +6,11 @@ from typing import Dict, Optional
 
 import zstandard as zstd
 
-from src.server.error_page import build_error_page_html
+from src.server.error_page import (
+    get_cached_error_page_body,
+    get_error_page_etag_opaque,
+    get_error_page_last_modified,
+)
 
 from .http_date import http_date_now
 from .reason_phrase import get_http_reason_phrase
@@ -29,12 +33,12 @@ class HTTPResponse:
         self,
         status: int = 200,
         body: bytes = b"",
-        header: Dict = {},
+        header: Optional[Dict] = None,
         content_type="text/html; charset=utf-8",
     ):
         self.status = status
         self.body = body
-        self.headers = {"Content-Type": content_type} | header
+        self.headers = {"Content-Type": content_type} | (header or {})
         self.__compress = ""
         self.__allow_compress = True
 
@@ -51,20 +55,35 @@ class HTTPResponse:
         self.__allow_compress = False
         self.__compress = ""
 
-    def to_bytes(self) -> bytes:
-        # ステータス行
+    def _resolve_reason_phrase(self) -> str:
         reason = get_http_reason_phrase(self.status)
         if reason == "-1":
             self.status = 500
+            reason = get_http_reason_phrase(self.status)
+        return reason
+
+    def prepare_default_error_validators(self) -> None:
+        reason = self._resolve_reason_phrase()
+
+        # 400-5xxで明示bodyがない場合、共通HTMLとvalidatorを付与する。
+        if 400 <= self.status < 600 and not self.body:
+            etag_opaque = get_error_page_etag_opaque(self.status, reason)
+            self.headers.setdefault("ETag", f'W/"{etag_opaque}"')
+            self.headers.setdefault("Last-Modified", get_error_page_last_modified())
+
+    def to_bytes(self) -> bytes:
+        reason = self._resolve_reason_phrase()
 
         if self.status == 405:
             self.headers["Allow"] = "GET, HEAD"
 
         status_line = f"HTTP/1.1 {self.status} {reason}\r\n"
 
-        # 4xxと5xx番コードで、明示的にbodyが指定されない場合にユーザ向けHTMLを返す。
-        if 400 < self.status < 600 and not self.body:
-            self.body = build_error_page_html(self.status, reason)
+        if 400 <= self.status < 600 and not self.body:
+            self.body = get_cached_error_page_body(self.status, reason)
+            etag_opaque = get_error_page_etag_opaque(self.status, reason)
+            self.headers.setdefault("ETag", f'W/"{etag_opaque}"')
+            self.headers.setdefault("Last-Modified", get_error_page_last_modified())
 
         response_body = self.body
         if isinstance(response_body, str):
