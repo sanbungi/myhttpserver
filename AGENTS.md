@@ -20,6 +20,19 @@
 - `test-assets/html/`: Static content for serving tests.
 - `labs/`: Experimental snippets for new features; typically ignore.
 
+## test-assets Submodule Sync
+- `test-assets/` is a git submodule. Source repo is typically `../myhttpserver-test-asset`.
+- Preferred workflow:
+  - Edit and commit assets/config in `../myhttpserver-test-asset` first.
+  - Then sync submodule pointer in this repo.
+- Use helper script:
+  - Sync + stage gitlink only: `script/sync_test_assets.sh`
+  - Sync + commit gitlink update: `script/sync_test_assets.sh --commit`
+  - Custom source/branch/message:
+    - `script/sync_test_assets.sh --source-dir ../myhttpserver-test-asset --branch main --commit --message "test-assets submodule更新"`
+- Safety behavior:
+  - Script stops if source repo has uncommitted changes.
+
 ## Core Files
 - `src/main.py`
   - Parses CLI args (`--config`, `--port`, `--http-port`, `--host`).
