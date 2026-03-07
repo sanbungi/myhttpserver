@@ -144,7 +144,7 @@ def _build_autoindex_html(
         '  <meta charset="utf-8">',
         f"  <title>Index of {safe_request_path}</title>",
         "  <style>",
-        "    body{margin:40px;font-family:monospace;}",
+        "    body{margin:40px;}",
         "    ul{list-style:none;padding-left:0;}",
         "    li{margin:4px 0;}",
         "    a{text-decoration:none;}",
