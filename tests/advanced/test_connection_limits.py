@@ -1,0 +1,77 @@
+import socket
+import time
+
+from src.server.ip_table import InMemoryIPTable
+
+HOST = "localhost"
+SOCKET_TIMEOUT = 2.0
+PER_IP_LIMIT = 20
+
+
+def _open_socket(port: int) -> socket.socket:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOST, port))
+    sock.settimeout(SOCKET_TIMEOUT)
+    return sock
+
+
+def _recv_headers(sock: socket.socket) -> bytes:
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+class TestInMemoryIPTable:
+    def test_try_acquire_and_release(self):
+        table = InMemoryIPTable(max_connections_per_ip=2)
+        ip = "127.0.0.1"
+
+        assert table.try_acquire_connection(ip) is True
+        assert table.try_acquire_connection(ip) is True
+        assert table.try_acquire_connection(ip) is False
+        assert table.get_active_connections(ip) == 2
+
+        table.release_connection(ip)
+        assert table.get_active_connections(ip) == 1
+        table.release_connection(ip)
+        assert table.get_active_connections(ip) == 0
+
+
+class TestPerIPConnectionLimit:
+    def test_limit_20_connections_per_ip(self, server_process, server_port):
+        sockets = []
+        blocked_socket = None
+        retry_socket = None
+
+        try:
+            for _ in range(PER_IP_LIMIT):
+                sockets.append(_open_socket(server_port))
+
+            # accept後のハンドラ起動を少し待ってから21本目を試す
+            time.sleep(0.2)
+
+            blocked_socket = _open_socket(server_port)
+            blocked_socket.sendall(
+                b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
+            )
+            blocked_response = _recv_headers(blocked_socket)
+            assert b"HTTP/1.1 429" in blocked_response
+
+            sockets.pop().close()
+            time.sleep(0.3)
+
+            retry_socket = _open_socket(server_port)
+            retry_socket.sendall(b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            retry_response = _recv_headers(retry_socket)
+            assert b"HTTP/1.1 200" in retry_response
+        finally:
+            if blocked_socket is not None:
+                blocked_socket.close()
+            if retry_socket is not None:
+                retry_socket.close()
+            for sock in sockets:
+                sock.close()

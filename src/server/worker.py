@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import re
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from .config_model import ServerConfig
 from .etag_utils import weak_etag_equal
+from .ip_table import InMemoryIPTable
 from .logging_config import log_access, pretty_block
 from .protocol import HttpError, HTTPRequest, HTTPResponse, parse_request
 from .router import (
@@ -18,6 +19,7 @@ MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
 HEADER_TIMEOUT_SECONDS = 5.0
 BODY_TIMEOUT_SECONDS = 10.0
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+DEFAULT_MAX_CONNECTIONS_PER_IP = 20
 HTTP_METHODS = {
     "GET",
     "POST",
@@ -31,14 +33,32 @@ HTTP_METHODS = {
 }
 
 logger = logging.getLogger(__name__)
+_DEFAULT_IP_TABLE = InMemoryIPTable(
+    max_connections_per_ip=DEFAULT_MAX_CONNECTIONS_PER_IP
+)
 
 
 async def handle_client(
-    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, config: ServerConfig
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    config: ServerConfig,
+    ip_table: Optional[InMemoryIPTable] = None,
 ):
     peer = writer.get_extra_info("peername")
-    ip, port = peer
-    # print(f"[+] Connection from ip={ip}, port={port}")
+    ip = _extract_peer_ip(peer)
+    table = ip_table if ip_table is not None else _DEFAULT_IP_TABLE
+    connection_acquired = table.try_acquire_connection(ip)
+
+    if not connection_acquired:
+        logger.warning("Per-IP connection limit exceeded for %s", ip)
+        await _send_connection_limit_response(writer)
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+            pass
+        return
+
     request: Optional[HTTPRequest] = None
 
     try:
@@ -151,6 +171,7 @@ async def handle_client(
     except Exception as e:
         logger.exception("Unhandled error in client handler: %s", e)
     finally:
+        table.release_connection(ip)
         try:
             writer.close()
             await writer.wait_closed()
@@ -202,6 +223,25 @@ async def safe_load(
 
 def contains_control_chars(s: str) -> bool:
     return _CONTROL_CHAR_RE.search(s) is not None
+
+
+def _extract_peer_ip(peer: Any) -> str:
+    if isinstance(peer, tuple) and peer:
+        return str(peer[0])
+    if peer is None:
+        return "-"
+    return str(peer)
+
+
+async def _send_connection_limit_response(writer: asyncio.StreamWriter) -> None:
+    try:
+        response = HTTPResponse(429)
+        response.set_header("Connection", "close")
+        response.set_header("Retry-After", "1")
+        writer.write(response.to_bytes())
+        await writer.drain()
+    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+        return
 
 
 def vetify_request(request: HTTPRequest):

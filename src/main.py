@@ -18,14 +18,17 @@ try:
         ServerConfig,
     )
     from src.server.core import HTTPServer
+    from src.server.ip_table import InMemoryIPTable
     from src.server.logging_config import setup_logging
 except ModuleNotFoundError:
     from server.autoindex_page import prime_autoindex_cache_for_server
     from server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
     from server.core import HTTPServer
+    from server.ip_table import InMemoryIPTable
     from server.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
+MAX_CONNECTIONS_PER_IP = 20
 
 # ループのエンジンに高パフォーマンスなuvloopを用いる
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -95,10 +98,22 @@ def _build_logging_kwargs(logging_config: LoggingConfig) -> dict:
     }
 
 
-def run_worker_process(host, port, config: ServerConfig, logging_config: LoggingConfig):
+def run_worker_process(
+    host,
+    port,
+    config: ServerConfig,
+    logging_config: LoggingConfig,
+    shared_ip_connections=None,
+    shared_ip_lock=None,
+):
     setup_logging(**_build_logging_kwargs(logging_config))
     prime_autoindex_cache_for_server(config)
-    server = HTTPServer(host=host, port=port, config=config)
+    ip_table = InMemoryIPTable(
+        max_connections_per_ip=MAX_CONNECTIONS_PER_IP,
+        active_connections=shared_ip_connections,
+        lock=shared_ip_lock,
+    )
+    server = HTTPServer(host=host, port=port, config=config, ip_table=ip_table)
 
     try:
         asyncio.run(server.serve_forever())
@@ -163,29 +178,40 @@ def main():
     logger.info("Total workers: %s", sum(workers_per_server))
 
     # ワーカープロセスの起動
-    workers = []
-    for server, worker_count in zip(app_config.servers, workers_per_server):
-        port = server.port
-        logger.info("Starting %s workers on port %s...", worker_count, port)
+    with multiprocessing.Manager() as manager:
+        shared_ip_connections = manager.dict()
+        shared_ip_lock = manager.Lock()
 
-        for _ in range(worker_count):
-            p = multiprocessing.Process(
-                target=run_worker_process,
-                args=(args.host, port, server, app_config.global_settings.logging),
-            )
-            p.start()
-            workers.append(p)
+        workers = []
+        for server, worker_count in zip(app_config.servers, workers_per_server):
+            port = server.port
+            logger.info("Starting %s workers on port %s...", worker_count, port)
 
-    # メインプロセスの待機ループ
-    try:
-        for p in workers:
-            p.join()
-    except KeyboardInterrupt:
-        logger.info("Stopping all workers...")
-        for p in workers:
-            if p.is_alive():
-                p.terminate()
+            for _ in range(worker_count):
+                p = multiprocessing.Process(
+                    target=run_worker_process,
+                    args=(
+                        args.host,
+                        port,
+                        server,
+                        app_config.global_settings.logging,
+                        shared_ip_connections,
+                        shared_ip_lock,
+                    ),
+                )
+                p.start()
+                workers.append(p)
+
+        # メインプロセスの待機ループ
+        try:
+            for p in workers:
                 p.join()
+        except KeyboardInterrupt:
+            logger.info("Stopping all workers...")
+            for p in workers:
+                if p.is_alive():
+                    p.terminate()
+                    p.join()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import ssl
 from functools import partial
 
 from .config_model import ServerConfig
+from .ip_table import InMemoryIPTable
 from .worker import handle_client
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,17 @@ def _resolve_tls_min_version(min_version: str) -> ssl.TLSVersion:
 
 
 class HTTPServer:
-    def __init__(self, host="127.0.0.1", port=8080, config: ServerConfig = None):
+    def __init__(
+        self,
+        host="127.0.0.1",
+        port=8080,
+        config: ServerConfig = None,
+        ip_table: InMemoryIPTable | None = None,
+    ):
         self.host = host
         self.port = port
         self.config = config
+        self.ip_table = ip_table
 
     def _create_socket(self):
         """
@@ -91,7 +99,9 @@ class HTTPServer:
             # 既存のソケットを使ってサーバーを開始
             try:
                 server = await asyncio.start_server(
-                    partial(handle_client, config=self.config), sock=sock, ssl=context
+                    partial(handle_client, config=self.config, ip_table=self.ip_table),
+                    sock=sock,
+                    ssl=context,
                 )
                 async with server:
                     await server.serve_forever()
@@ -100,7 +110,8 @@ class HTTPServer:
                 logger.warning("SSL handshake failed with %s: %s", self.host, e)
         else:
             server = await asyncio.start_server(
-                partial(handle_client, config=self.config), sock=sock
+                partial(handle_client, config=self.config, ip_table=self.ip_table),
+                sock=sock,
             )
             async with server:
                 await server.serve_forever()
