@@ -151,6 +151,25 @@ class TestRouterHelpers:
         selected = get_preferred_encoding("br, gzip", ["gzip", "zstd"])
         assert selected == "gzip"
 
+    @pytest.mark.parametrize(
+        ("name", "expected_type", "expected_binary"),
+        [
+            ("image.avif", "image/avif", True),
+            ("image.webp", "image/webp", True),
+            ("movie.webm", "video/webm", True),
+            ("movie.mp4", "video/mp4", True),
+            ("font.woff2", "font/woff2", True),
+            ("module.wasm", "application/wasm", True),
+            ("site.webmanifest", "application/manifest+json; charset=utf-8", False),
+        ],
+    )
+    def test_get_content_type_extended_map(
+        self, name: str, expected_type: str, expected_binary: bool
+    ):
+        ctype, is_binary = get_content_type(name)
+        assert ctype == expected_type
+        assert is_binary is expected_binary
+
     def test_find_best_route_prefers_longer_prefix(self):
         server = SimpleNamespace(
             routes=[

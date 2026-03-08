@@ -31,6 +31,60 @@ _FILE_META_CACHE: dict[str, tuple[int, int, int, str, str]] = {}
 
 cache = FileCache()
 
+# 拡張子と（MIMEタイプ, is_binary）の対応表
+MIME_MAP: dict[str, tuple[str, bool]] = {
+    ".html": ("text/html; charset=utf-8", False),
+    ".htm": ("text/html; charset=utf-8", False),
+    ".css": ("text/css; charset=utf-8", False),
+    ".js": ("application/javascript; charset=utf-8", False),
+    ".mjs": ("application/javascript; charset=utf-8", False),
+    ".json": ("application/json; charset=utf-8", False),
+    ".map": ("application/json; charset=utf-8", False),
+    ".txt": ("text/plain; charset=utf-8", False),
+    ".csv": ("text/csv; charset=utf-8", False),
+    ".tsv": ("text/tab-separated-values; charset=utf-8", False),
+    ".xml": ("application/xml; charset=utf-8", False),
+    ".md": ("text/markdown; charset=utf-8", False),
+    ".png": ("image/png", True),
+    ".jpg": ("image/jpeg", True),
+    ".jpeg": ("image/jpeg", True),
+    ".gif": ("image/gif", True),
+    ".webp": ("image/webp", True),
+    ".avif": ("image/avif", True),
+    ".svg": ("image/svg+xml", False),  # SVGはXMLなのでテキスト
+    ".ico": ("image/x-icon", True),
+    ".bmp": ("image/bmp", True),
+    ".tif": ("image/tiff", True),
+    ".tiff": ("image/tiff", True),
+    ".mp4": ("video/mp4", True),
+    ".webm": ("video/webm", True),
+    ".m4v": ("video/mp4", True),
+    ".mov": ("video/quicktime", True),
+    ".avi": ("video/x-msvideo", True),
+    ".ogv": ("video/ogg", True),
+    ".mp3": ("audio/mpeg", True),
+    ".wav": ("audio/wav", True),
+    ".ogg": ("audio/ogg", True),
+    ".oga": ("audio/ogg", True),
+    ".m4a": ("audio/mp4", True),
+    ".aac": ("audio/aac", True),
+    ".flac": ("audio/flac", True),
+    ".pdf": ("application/pdf", True),
+    ".wasm": ("application/wasm", True),
+    ".woff": ("font/woff", True),
+    ".woff2": ("font/woff2", True),
+    ".ttf": ("font/ttf", True),
+    ".otf": ("font/otf", True),
+    ".eot": ("application/vnd.ms-fontobject", True),
+    ".zip": ("application/zip", True),
+    ".gz": ("application/gzip", True),
+    ".br": ("application/brotli", True),
+    ".tar": ("application/x-tar", True),
+    ".7z": ("application/x-7z-compressed", True),
+    ".rar": ("application/vnd.rar", True),
+    ".webmanifest": ("application/manifest+json; charset=utf-8", False),
+}
+
 
 # ルーティング層
 async def resolve_route(
@@ -90,7 +144,9 @@ async def resolve_route(
             # /でパスが終わるなら、そのディレクトリのindex.htmlに転送させる。
             if statmod.S_ISDIR(stat_result.st_mode):
                 if getattr(route, "autoindex", False):
-                    index_meta = _find_directory_index_meta(server_file_path, route.index)
+                    index_meta = _find_directory_index_meta(
+                        server_file_path, route.index
+                    )
                     if index_meta is not None:
                         server_file_path, stat_result, last_modify, base_etag = (
                             index_meta
@@ -571,22 +627,6 @@ def apply_response_headers_from_config(
 
 # ファイルパスからContent-Typeを判定し、テキスト/バイナリを返す
 def get_content_type(file_path: str) -> tuple[str, bool]:
-    # 拡張子と（MIMEタイプ, is_binary）の対応表
-    MIME_MAP = {
-        ".html": ("text/html; charset=utf-8", False),
-        ".htm": ("text/html; charset=utf-8", False),
-        ".css": ("text/css; charset=utf-8", False),
-        ".js": ("application/javascript; charset=utf-8", False),
-        ".json": ("application/json; charset=utf-8", False),
-        ".txt": ("text/plain; charset=utf-8", False),
-        ".png": ("image/png", True),
-        ".jpg": ("image/jpeg", True),
-        ".jpeg": ("image/jpeg", True),
-        ".gif": ("image/gif", True),
-        ".svg": ("image/svg+xml", False),  # SVGはXMLなのでテキスト
-        ".pdf": ("application/pdf", True),
-    }
-
     dot_idx = file_path.rfind(".")
     ext = file_path[dot_idx:].lower() if dot_idx != -1 else ""
     # 辞書にない場合はデフォルト値を返す (getメソッドの活用)
