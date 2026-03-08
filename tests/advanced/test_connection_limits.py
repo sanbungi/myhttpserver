@@ -4,6 +4,7 @@ import time
 
 from src.server.config_model import GlobalConfig
 from src.server.ip_table import InMemoryIPTable
+from src.server.worker import WorkerConnectionLimiter
 
 HOST = "localhost"
 SOCKET_TIMEOUT = 2.0
@@ -130,3 +131,30 @@ class TestBanList:
             {"global": {"ban_list_file": "/tmp/ban-list-nested.txt"}}
         )
         assert cfg.ban_list_file == "/tmp/ban-list-nested.txt"
+
+    def test_global_config_reads_max_connections(self):
+        cfg = GlobalConfig.from_dict({"max_connections": "64"})
+        assert cfg.max_connections == 64
+
+    def test_global_config_invalid_max_connections_falls_back_default(self):
+        cfg = GlobalConfig.from_dict({"max_connections": 0})
+        assert cfg.max_connections == 1024
+
+
+class TestWorkerConnectionLimiter:
+    def test_try_acquire_and_release(self):
+        limiter = WorkerConnectionLimiter(max_connections=2)
+
+        assert limiter.try_acquire() is True
+        assert limiter.try_acquire() is True
+        assert limiter.try_acquire() is False
+        assert limiter.get_active_connections() == 2
+
+        limiter.release()
+        assert limiter.get_active_connections() == 1
+        limiter.release()
+        assert limiter.get_active_connections() == 0
+
+    def test_limit_is_at_least_one(self):
+        limiter = WorkerConnectionLimiter(max_connections=0)
+        assert limiter.max_connections == 1

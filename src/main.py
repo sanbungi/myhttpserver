@@ -109,6 +109,7 @@ def run_worker_process(
     port,
     config: ServerConfig,
     logging_config: LoggingConfig,
+    max_connections_per_worker: int = 1024,
     shared_ip_connections=None,
     shared_ip_lock=None,
     ban_list_file: str | None = None,
@@ -123,7 +124,13 @@ def run_worker_process(
         ban_list_file=ban_list_file,
         debug_enabled=debug_ip_table,
     )
-    server = HTTPServer(host=host, port=port, config=config, ip_table=ip_table)
+    server = HTTPServer(
+        host=host,
+        port=port,
+        config=config,
+        ip_table=ip_table,
+        max_connections_per_worker=max_connections_per_worker,
+    )
 
     try:
         asyncio.run(server.serve_forever())
@@ -165,6 +172,7 @@ def main():
             port_override,
             compat_server,
             app_config.global_settings.logging,
+            app_config.global_settings.max_connections,
             ban_list_file=app_config.global_settings.ban_list_file,
             debug_ip_table=args.debug_ip_table,
         )
@@ -210,6 +218,7 @@ def main():
                         port,
                         server,
                         app_config.global_settings.logging,
+                        app_config.global_settings.max_connections,
                         shared_ip_connections,
                         shared_ip_lock,
                         app_config.global_settings.ban_list_file,

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import threading
 from typing import Any, Optional, Tuple
 
 from .config_model import ServerConfig
@@ -20,6 +21,7 @@ HEADER_TIMEOUT_SECONDS = 5.0
 BODY_TIMEOUT_SECONDS = 10.0
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 DEFAULT_MAX_CONNECTIONS_PER_IP = 20
+DEFAULT_MAX_CONNECTIONS_PER_WORKER = 1024
 HTTP_METHODS = {
     "GET",
     "POST",
@@ -38,15 +40,48 @@ _DEFAULT_IP_TABLE = InMemoryIPTable(
 )
 
 
+class WorkerConnectionLimiter:
+    def __init__(self, max_connections: int = DEFAULT_MAX_CONNECTIONS_PER_WORKER):
+        self.max_connections = max(1, int(max_connections))
+        self._active_connections = 0
+        self._lock = threading.Lock()
+
+    def try_acquire(self) -> bool:
+        with self._lock:
+            if self._active_connections >= self.max_connections:
+                return False
+            self._active_connections += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            if self._active_connections <= 0:
+                return
+            self._active_connections -= 1
+
+    def get_active_connections(self) -> int:
+        with self._lock:
+            return self._active_connections
+
+
+_DEFAULT_WORKER_CONNECTION_LIMITER = WorkerConnectionLimiter()
+
+
 async def handle_client(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     config: ServerConfig,
     ip_table: Optional[InMemoryIPTable] = None,
+    worker_limiter: Optional[WorkerConnectionLimiter] = None,
 ):
     peer = writer.get_extra_info("peername")
     ip = _extract_peer_ip(peer)
     table = ip_table if ip_table is not None else _DEFAULT_IP_TABLE
+    limiter = (
+        worker_limiter
+        if worker_limiter is not None
+        else _DEFAULT_WORKER_CONNECTION_LIMITER
+    )
 
     if table.is_banned(ip):
         logger.warning("Blocked banned IP: %s", ip)
@@ -54,17 +89,25 @@ async def handle_client(
         await _close_writer_quietly(writer)
         return
 
-    connection_acquired = table.try_acquire_connection(ip)
-
-    if not connection_acquired:
-        logger.warning("Per-IP connection limit exceeded for %s", ip)
+    worker_connection_acquired = limiter.try_acquire()
+    if not worker_connection_acquired:
+        logger.warning("Per-worker connection limit exceeded: ip=%s", ip)
         await _send_connection_limit_response(writer)
         await _close_writer_quietly(writer)
         return
 
+    connection_acquired = False
     request: Optional[HTTPRequest] = None
 
     try:
+        connection_acquired = table.try_acquire_connection(ip)
+
+        if not connection_acquired:
+            logger.warning("Per-IP connection limit exceeded for %s", ip)
+            await _send_connection_limit_response(writer)
+            await _close_writer_quietly(writer)
+            return
+
         while True:
             request = None
             # パケットのサイズが大きければcloseされる。
@@ -174,7 +217,9 @@ async def handle_client(
     except Exception as e:
         logger.exception("Unhandled error in client handler: %s", e)
     finally:
-        table.release_connection(ip)
+        if connection_acquired:
+            table.release_connection(ip)
+        limiter.release()
         try:
             writer.close()
             await writer.wait_closed()

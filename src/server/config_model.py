@@ -290,6 +290,16 @@ class GlobalConfig:
     )
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
+    @staticmethod
+    def _to_positive_int(value, default: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        if parsed < 1:
+            return default
+        return parsed
+
     @classmethod
     def from_dict(cls, data: Dict) -> "GlobalConfig":
         if not data:
@@ -299,8 +309,10 @@ class GlobalConfig:
         if isinstance(nested_global, dict):
             nested_ban_list_file = nested_global.get("ban_list_file")
         return cls(
-            worker_processes=data.get("worker_processes", 1),
-            max_connections=data.get("max_connections", 1024),
+            worker_processes=cls._to_positive_int(
+                data.get("worker_processes"), 1
+            ),
+            max_connections=cls._to_positive_int(data.get("max_connections"), 1024),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
             ban_list_file=data.get("ban_list_file") or nested_ban_list_file,
