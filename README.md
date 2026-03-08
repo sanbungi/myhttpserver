@@ -1,5 +1,8 @@
 # myhttpserver
 
+[![Build Wheel](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml)
+[![Pytest](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml)
+
 ## Overview
 
 
