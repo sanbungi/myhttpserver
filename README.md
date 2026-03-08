@@ -2,6 +2,7 @@
 
 [![Build Wheel](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml)
 [![Pytest](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml)
+[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/2gwju.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 
 ## Overview
 
@@ -21,6 +22,10 @@
 ## Demo
 
 GIFを貼る
+
+稼働Webサイトのメトリクス公開してます。
+
+https://myhttp.betteruptime.com/
 
 ## Features
 
