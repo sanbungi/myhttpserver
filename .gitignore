@@ -20,3 +20,5 @@ bench_reports/
 
 *.crt
 *.key
+
+.coverage
