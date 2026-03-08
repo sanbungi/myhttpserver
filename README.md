@@ -1,11 +1,48 @@
 # myhttpserver
 
-## How to Run
+## Overview
 
-パッケージ管理はuvを使用している
+
+実装は理解しやすい構造とHTTP仕様の正しさを重視しつつ、実用的な性能も維持することを目標にしています。
+
+**主な特徴**
+
+- asyncio + マルチコア処理による並行処理
+- コアあたり約2kリクエスト/秒の処理能力
+- Webサーバーとして必要な基本コンポーネントを実装
+- 実際のWebサイトとして試験運用しています。
+- RFC2616 / RFC7231 / RFC7232 を参考に設計
+
+すべてのHTTP仕様を完全に満たしているわけではありませんが、RFC準拠を目標として継続的に改善を行っています。
+
+## Demo
+
+GIFを貼る
+
+## Features
+
+myhttpserver はシンプルな構造を維持しつつ、Webサーバーとして必要な基本機能を提供します。
+
+主な機能:
+
+- 静的ファイル配信
+- リバースプロキシ
+- パスベースルーティング（Longest Match）
+- IPベースアクセス制御
+- レートリミット
+- Keep-Alive対応
+- gzipレスポンス圧縮
+- ETag生成
+- HCLベース設定ファイル
+
+HTTPサーバーの基本コンポーネントを理解しやすい形で実装することを重視しています。
+
+## Quick Start
+
+このプロジェクトでは Pythonパッケージ管理に uv を使用しています。
 
 ```bash
-# 環境作成
+
 uv sync
 
 # テスト用静的アセット取得
@@ -18,153 +55,93 @@ uv run src/main.py
 uv run pytest tests --server-mode=config-http
 ```
 
-## 処理フロー
-- スレッド管理 (同時に複数のリクエストを処理する)
-- tcpソケット管理
-	- レートリミット管理
-- パケット事前確認(異常なパケットを除外)
-- HTTPパース (文字列から構造化データに)
-- ルーティング
-	- 静的ファイル配信か、プロキシ処理かで分岐
-- アクセス制御
-- コンテンツ処理
-	- キャッシュ確認
-	- 実ファイル読み込み
-	- プロキシの場合、二次リクエストやり取り
-- レスポンス生成
-	- 圧縮
-	- Etag生成
-- keep-alive確認
+## Architecture
 
-途中で失敗すれば即座に500エラーを返す。
+リクエストは以下の処理フローで処理されます。
+
+1. スレッド管理  
+   - 複数リクエストを並行処理
+
+2. TCPソケット管理  
+   - 接続受付  
+   - レートリミット管理
+
+3. パケット事前検証  
+   - 異常なパケットの除外
+
+4. HTTPパース  
+   - 受信データをHTTP構造に変換
+
+5. ルーティング  
+   - 静的配信またはプロキシ処理に分岐
+
+6. アクセス制御
+
+7. コンテンツ処理  
+   - キャッシュ確認  
+   - ファイル読み込み  
+   - プロキシ通信
+
+8. レスポンス生成  
+   - gzip圧縮  
+   - ETag生成
+
+9. Keep-Alive判定
+
+処理途中でエラーが発生した場合は **HTTP 500** を返します。
 
 ![server_flow](https://github.com/user-attachments/assets/1df010c1-473e-4e8c-8059-a9fc6e85f3a4)
 
+## Configuration
 
+myhttpserver は **HCL (HashiCorp Configuration Language)** を使用して設定を定義します。
 
+設定は次の3階層構造で構成されています。
 
-# 設定ファイル解説（仮）
+```
+Global → Server → Route
+```
 
-MyHTTPServerは、HCL (HashiCorp Configuration Language) を採用した設定ファイル（`config.hcl`）を使用します。設定は **Global > Server > Route** の3層構造で記述します。
+| Scope | 説明 |
+|------|------|
+| global | サーバープロセス全体の設定 |
+| server | バーチャルホスト設定 |
+| route | パス単位のルーティング |
 
-## 1. 階層構造
-
-| スコープ | 記述数 | 役割 |
-| --- | --- | --- |
-| **`global`** | 1つのみ | プロセス全体の動作（スレッド、ログ、共通タイムアウト） |
-| **`server`** | 複数可 | バーチャルホストの設定（ドメイン、ポート、TLS、共通ヘッダー） |
-| **`route`** | 複数可 | パスごとの挙動（静的配信、プロキシ、リダイレクト、制限） |
-
----
-
-## 2. Global ブロック
-
-サーバー全体の設定を定義します。
+### 最小設定例
 
 ```hcl
 global {
-  worker_processes  = 4      # ワーカースレッド数
-  max_connections   = 1024   # 最大同時接続数
-  timeout           = "30s"  # 通信タイムアウト
-
-  logging {
-    level  = "info"          # debug, info, warn, error
-    output = "stdout"        # パスまたは stdout
-    format = "json"          # json または text
-  }
+  worker_processes = 4
 }
 
-```
+server {
+  host = "localhost"
+  port = 8080
+  root = "./public"
+}
 
----
-
-## 3. Server ブロック
-
-特定のホスト名やポートに対する設定を定義します。
-
-### 基本設定
-
-| パラメータ | 型 | 説明 |
-| --- | --- | --- |
-| `host` | string | 待ち受けるホスト名（ドメイン） |
-| `port` | int | 待ち受けるポート番号 |
-| `root` | string | ドキュメントルートのパス |
-
-### サブブロック
-
-* **`tls`**: HTTPS有効化時に `enabled`, `cert`, `key` を指定。
-* **`headers`**: `add` (map), `remove` (list) を使用してレスポンスヘッダーを操作。
-
----
-
-## 4. Route ブロック
-
-URLパスごとの挙動を定義します。**最長一致（Longest Match）**の原則で適用されます。
-
-### Route Type 一覧
-
-| type | 必須ブロック | 用途 |
-| --- | --- | --- |
-| **`static`** | なし | `root`配下の静的ファイル配信 |
-| **`proxy`** | `backend` | リバースプロキシ（`upstream`への転送） |
-| **`raw`** | `respond` | 固定ステータスコードとボディの返却 |
-| **`redirect`** | `redirect` | 指定URLへのHTTPリダイレクト |
-
-### 設定例
-
-```hcl
-# 静的配信 + アクセス制限
-route "/admin" {
+route "/" {
   type = "static"
-  security {
-    ip_allow = ["192.168.1.0/24"]
-    deny_all = true
-  }
 }
-
-# リバースプロキシ
-route "/api" {
-  type = "proxy"
-  backend {
-    upstream = "http://localhost:9000"
-    timeout  = "30s"
-  }
-}
-
-# 固定レスポンス (メンテナンス等)
-route "/health" {
-  type = "raw"
-  respond {
-    status = 200
-    body   = "OK"
-  }
-}
-
-# リダイレクト
-route "/old-path" {
-  type = "redirect"
-  redirect {
-    url  = "/new-path"
-    code = 301
-  }
-}
-
 ```
 
----
+詳細な設定リファレンスは Wiki を参照してください。
 
-## 5. 共通オプション
+https://github.com/sanbungi/myhttpserver/wiki
 
-`route` 内で利用可能な補助設定です。
+## Development
 
-### security ブロック
+テストには **pytest** を使用しています。
 
-* `ip_allow`: 許可するIP/CIDRのリスト。
-* `deny_all`: trueの場合、リスト外からのアクセスを403で拒否。
+```bash
+uv run pytest tests --server-mode=config-http
+```
 
-### headers ブロック
+## Roadmap
 
-* `add` / `set`: ヘッダーの追加・上書き。 `{ "Key" = "Value" }` 形式。
-* `remove`: 削除するヘッダー名のリスト。
+今後予定している機能:
 
----
+- HTTP/2対応
+- メトリクス機能の強化
+- 負荷分散やロードバランサー機能の実験
