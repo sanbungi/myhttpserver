@@ -76,7 +76,7 @@ uv run pytest tests --server-mode=config-http
 
 処理途中でエラーが発生した場合は **HTTP 500** を返します。
 
-![server_flow_yoko](https://github.com/user-attachments/assets/c151b35f-fe0e-4942-b9ad-67d329fcdd17)
+![server_flow_yoko](https://github.com/user-attachments/assets/347f6492-5dfa-4916-941d-53d63d8e432c)
 
 ## Configuration
 
