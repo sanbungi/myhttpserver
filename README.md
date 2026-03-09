@@ -21,9 +21,9 @@
 
 ## Demo
 
-GIFを貼る
+https://github.com/user-attachments/assets/1bb80d72-59de-4145-9ac2-824f96ec124c
 
-稼働Webサイトのメトリクス公開してます。
+試験運用Webサイトのメトリクス公開してます。↓↓↓
 
 https://myhttp.betteruptime.com/
 
