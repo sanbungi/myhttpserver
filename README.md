@@ -64,7 +64,7 @@ uv sync
 git submodule update --init --recursive
 
 # 起動
-uv run src/main.py
+uv run src/main.py --host 0.0.0.0 --config test-assets/config/example.hcl
 
 # テスト
 uv run pytest tests --server-mode=config-http
