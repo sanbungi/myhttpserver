@@ -331,11 +331,16 @@ async def resolve_route(
             logger.debug("proxy_request_path=%s", proxy_request_path)
             logger.debug("upstream_url=%s", upstrean_url)
 
-            # プロキシ先にリクエストを送る前にHostヘッダー削除
+            # upstream へ送るリクエストヘッダーを構築
             send_header = dict(request.headers)
-            for header_name in list(send_header):
-                if header_name.lower() == "host":
-                    send_header.pop(header_name)
+            # RFC 7230 §6.1: hop-by-hop ヘッダーを upstream に転送しない
+            _strip_hop_by_hop_headers(send_header)
+            # Host は httpx が upstream URL から自動設定するため除去
+            _drop_header_case_insensitive(send_header, "host")
+            # backend.headers 設定を適用（X-Forwarded-* 等）
+            _apply_backend_headers(send_header, route.backend.headers, request)
+
+            logger.debug("upstream request headers=%s", pretty_block(send_header))
 
             try:
                 async with httpx.AsyncClient() as client:
@@ -347,26 +352,70 @@ async def resolve_route(
                         content=request.body,
                         timeout=10.0,
                     )
+            except httpx.RequestError as e:
+                logger.error(
+                    "Proxy upstream connection error: %s %s -> %s%s: %s",
+                    request.method,
+                    request.path,
+                    upstrean_url,
+                    proxy_request_path,
+                    e,
+                )
+                return HTTPResponse(504)
 
-                logger.debug("upstream status=%s", resp.status_code)
-                logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
+            logger.debug("upstream status=%s", resp.status_code)
+            logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
 
-                # 不要なヘッダー削除
+            if resp.status_code >= 500:
+                logger.warning(
+                    "Proxy upstream returned %s: %s %s -> %s%s",
+                    resp.status_code,
+                    request.method,
+                    request.path,
+                    upstrean_url,
+                    proxy_request_path,
+                )
+
+            try:
+                # レスポンスヘッダーを dict に変換し hop-by-hop 等を除去
                 _content_type = resp.headers.get(
                     "content-type", "application/octet-stream"
                 )
-                resp.headers.pop("content-type", None)
-                resp = drop_proxy_header(resp)
+                resp_headers = dict(resp.headers)
+                _drop_header_case_insensitive(resp_headers, "content-type")
+                _strip_proxy_response_headers(resp_headers)
+
+                resp_body = resp.content
+
+                # レスポンスボディ・ヘッダー内のURLリライト
+                rewrite_url = route.backend.rewrite_url
+                if rewrite_url:
+                    resp_body, resp_headers = _rewrite_proxy_urls(
+                        resp_body,
+                        _content_type,
+                        resp_headers,
+                        rewrite_url,
+                        request,
+                        server,
+                    )
 
                 return HTTPResponse(
                     status=resp.status_code,
-                    body=resp.content,
+                    body=resp_body,
                     content_type=_content_type,
-                    header=dict(resp.headers),
+                    header=resp_headers,
                 )
-            except httpx.RequestError as e:
-                logger.exception("Upstream error: %s", e)
-                return HTTPResponse(504)
+            except Exception as e:
+                logger.error(
+                    "Proxy response processing error: %s %s (upstream status=%s): %s: %s",
+                    request.method,
+                    request.path,
+                    resp.status_code,
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
+                )
+                return HTTPResponse(500)
 
         # 固定値のレスポンス
         elif route.type == "raw":
@@ -734,25 +783,119 @@ def check_cache_if_modified_since(
     return int(last_modified_ts) <= int(since_ts)
 
 
-def drop_proxy_header(resp: httpx.Response):
-    # hop-by-hop header
-    remove_header = [
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-    ]
-    for r in remove_header:
-        resp.headers.pop(r, None)
+# RFC 7230 Section 6.1 で定義された静的 hop-by-hop ヘッダー
+_STATIC_HOP_BY_HOP_HEADERS = frozenset([
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+])
 
-    # 以下の削除は実装方針による
-    resp.headers.pop("content-encoding", None)
-    resp.headers.pop("content-length", None)
-    resp.headers.pop("date", None)
-    resp.headers.pop("server", None)
 
-    return resp
+def _strip_hop_by_hop_headers(headers: dict) -> None:
+    """RFC 7230 Section 6.1 準拠の hop-by-hop ヘッダー除去。
+
+    1. Connection ヘッダーに列挙された connection-option を動的に除去
+    2. Connection ヘッダー自体を除去
+    3. 静的 hop-by-hop ヘッダーを除去（安全策）
+    """
+    # 1. Connection ヘッダーから動的 hop-by-hop を取得して除去
+    connection_value = _get_header_case_insensitive(headers, "connection", "")
+    for opt in connection_value.split(","):
+        opt = opt.strip().lower()
+        if opt:
+            _drop_header_case_insensitive(headers, opt)
+
+    # 2. Connection ヘッダー自体を除去
+    _drop_header_case_insensitive(headers, "connection")
+
+    # 3. 静的 hop-by-hop ヘッダーを除去（安全策）
+    for name in _STATIC_HOP_BY_HOP_HEADERS:
+        _drop_header_case_insensitive(headers, name)
+
+
+def _strip_proxy_response_headers(headers: dict) -> None:
+    """レスポンスヘッダーから hop-by-hop および実装方針上不要なヘッダーを除去する。"""
+    _strip_hop_by_hop_headers(headers)
+    # httpx が自動デコード済みのため Content-Encoding は除去
+    _drop_header_case_insensitive(headers, "content-encoding")
+    # Content-Length / Date / Server はプロキシ側で付与し直す
+    _drop_header_case_insensitive(headers, "content-length")
+    _drop_header_case_insensitive(headers, "date")
+    _drop_header_case_insensitive(headers, "server")
+
+
+def _apply_backend_headers(
+    headers: dict, headers_config: Optional[HeadersConfig], request: HTTPRequest
+) -> None:
+    """backend.headers 設定をリクエストヘッダーに適用する。
+
+    変数展開:
+      $remote_addr  → クライアントの IP アドレス
+    """
+    if not headers_config:
+        return
+
+    variables = {
+        "$remote_addr": request.remote_addr,
+    }
+
+    for name in headers_config.remove:
+        name = name.strip()
+        if name:
+            _drop_header_case_insensitive(headers, name)
+
+    for key, value in headers_config.add.items():
+        key = key.strip()
+        if not key:
+            continue
+        for var, val in variables.items():
+            value = value.replace(var, val)
+        _drop_header_case_insensitive(headers, key)
+        headers[key] = value
+
+
+_REWRITE_TEXT_TYPES = (
+    "text/",
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "application/xhtml",
+)
+
+
+def _rewrite_proxy_urls(
+    body: bytes,
+    content_type: str,
+    headers: dict,
+    rewrite_from: str,
+    request: HTTPRequest,
+    server: "ServerConfig",
+) -> tuple[bytes, dict]:
+    """upstreamのURLをプロキシのURLに置換する。"""
+    scheme = "https" if server.tls and server.tls.enabled else "http"
+    host = _get_header_case_insensitive(request.headers, "host") or f"{server.host}:{server.port}"
+    rewrite_to = f"{scheme}://{host}"
+
+    from_bytes = rewrite_from.rstrip("/").encode()
+    to_bytes = rewrite_to.rstrip("/").encode()
+
+    logger.debug("rewrite_url: %s -> %s", from_bytes, to_bytes)
+
+    # テキスト系コンテンツのみボディを置換
+    ct_lower = content_type.lower()
+    if any(ct_lower.startswith(t) for t in _REWRITE_TEXT_TYPES):
+        body = body.replace(from_bytes, to_bytes)
+
+    # Locationヘッダー等も置換
+    rewritten_headers = {}
+    for k, v in headers.items():
+        if isinstance(v, str) and rewrite_from.rstrip("/") in v:
+            v = v.replace(rewrite_from.rstrip("/"), rewrite_to.rstrip("/"))
+        rewritten_headers[k] = v
+
+    return body, rewritten_headers

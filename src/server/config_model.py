@@ -157,6 +157,7 @@ class BackendConfig:
     upstream: str
     timeout: str = "30s"
     headers: Optional[HeadersConfig] = None
+    rewrite_url: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict) -> "BackendConfig":
@@ -166,6 +167,7 @@ class BackendConfig:
             upstream=data.get("upstream", ""),
             timeout=data.get("timeout", "30s"),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
+            rewrite_url=data.get("rewrite_url"),
         )
 
 
