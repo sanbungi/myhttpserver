@@ -1,5 +1,6 @@
 import gzip
 import logging
+import re
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Dict, Optional
@@ -16,6 +17,14 @@ from .http_date import http_date_now
 from .reason_phrase import get_http_reason_phrase
 
 logger = logging.getLogger(__name__)
+
+# RFC 7230 §3.2.6: ヘッダー値に CR/LF/NUL が含まれるとレスポンス分割になる
+_HEADER_UNSAFE_RE = re.compile(r"[\r\n\x00]")
+
+
+def _sanitize_header_value(value: str) -> str:
+    """ヘッダー値から改行・NUL文字を除去してインジェクションを防止する。"""
+    return _HEADER_UNSAFE_RE.sub("", value)
 
 
 @dataclass
@@ -43,7 +52,7 @@ class HTTPResponse:
         self.__allow_compress = True
 
     def set_header(self, key: str, value: str):
-        self.headers[key] = value
+        self.headers[key] = _sanitize_header_value(value)
 
     def set_compress(self, compress_type):
         if not self.__allow_compress:
@@ -105,13 +114,14 @@ class HTTPResponse:
         self.headers["Date"] = http_date_now()
 
         # ヘッダー結合（値がリストの場合は同名ヘッダーを複数行展開する）
+        # ヘッダー値の改行をサニタイズしてレスポンス分割攻撃を防止
         header_lines = ""
         for k, v in self.headers.items():
             if isinstance(v, list):
                 for item in v:
-                    header_lines += f"{k}: {item}\r\n"
+                    header_lines += f"{k}: {_sanitize_header_value(str(item))}\r\n"
             else:
-                header_lines += f"{k}: {v}\r\n"
+                header_lines += f"{k}: {_sanitize_header_value(str(v))}\r\n"
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + response_body

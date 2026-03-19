@@ -464,11 +464,13 @@ async def resolve_route(
             logger.debug("route.redirect=%s", pretty_block(route.redirect))
             redirect_url = route.redirect.url
             if "$request_uri" in redirect_url:
-                redirect_url = redirect_url.replace("$request_uri", request.path)
+                safe_path = _sanitize_redirect_value(request.path)
+                redirect_url = redirect_url.replace("$request_uri", safe_path)
                 logger.debug("Rewrite URL %s", redirect_url)
 
             return HTTPResponse(
-                status=route.redirect.code, header={"Location": redirect_url}
+                status=route.redirect.code,
+                header={"Location": _sanitize_redirect_value(redirect_url)},
             )
         else:
             return HTTPResponse(500)
@@ -966,6 +968,18 @@ def _rewrite_proxy_urls(
         rewritten_headers[k] = v
 
     return body, rewritten_headers
+
+
+# ---------------------------------------------------------------------------
+# ヘッダーインジェクション防止
+# ---------------------------------------------------------------------------
+
+_REDIRECT_UNSAFE_RE = re.compile(r"[\r\n\x00]")
+
+
+def _sanitize_redirect_value(value: str) -> str:
+    """リダイレクト先URLから改行・NUL文字を除去してヘッダーインジェクションを防止する。"""
+    return _REDIRECT_UNSAFE_RE.sub("", value)
 
 
 # ---------------------------------------------------------------------------
