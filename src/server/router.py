@@ -1,6 +1,7 @@
 import ipaddress
 import logging
 import os
+import re
 import stat as statmod
 from datetime import timezone
 from email.utils import formatdate, parsedate_to_datetime
@@ -377,13 +378,33 @@ async def resolve_route(
                 )
 
             try:
+                # Set-Cookie は複数ある可能性があるため dict 変換前に個別取得
+                raw_set_cookies = resp.headers.get_list("set-cookie")
+
                 # レスポンスヘッダーを dict に変換し hop-by-hop 等を除去
                 _content_type = resp.headers.get(
                     "content-type", "application/octet-stream"
                 )
                 resp_headers = dict(resp.headers)
                 _drop_header_case_insensitive(resp_headers, "content-type")
+                _drop_header_case_insensitive(resp_headers, "set-cookie")
                 _strip_proxy_response_headers(resp_headers)
+
+                # Set-Cookie のドメイン・SameSite 書き換え
+                is_https = bool(server.tls and server.tls.enabled)
+                from_host = (
+                    route.backend.rewrite_url.split("://")[-1]
+                    if route.backend.rewrite_url
+                    else upstrean_url.split("://")[-1]
+                )
+                if raw_set_cookies:
+                    resp_headers["Set-Cookie"] = [
+                        _rewrite_set_cookie_header(c, from_host, is_https)
+                        for c in raw_set_cookies
+                    ]
+                    logger.debug(
+                        "rewritten Set-Cookie: %s", resp_headers["Set-Cookie"]
+                    )
 
                 resp_body = resp.content
 
@@ -857,6 +878,39 @@ def _apply_backend_headers(
             value = value.replace(var, val)
         _drop_header_case_insensitive(headers, key)
         headers[key] = value
+
+
+def _rewrite_set_cookie_header(cookie: str, from_host: str, is_https: bool) -> str:
+    """Set-Cookie ヘッダー値のドメインと SameSite を書き換える。
+
+    - Domain=<upstream host> を削除（ブラウザがプロキシのホストをデフォルト使用する）
+    - HTTPS でない場合: SameSite=None → SameSite=Lax、Secure 属性を除去
+    """
+    # Domain=<from_host> を除去（ポート付き・なし両対応）
+    from_host_no_port = from_host.split(":")[0]
+    cookie = re.sub(
+        r";\s*[Dd]omain\s*=\s*\.?" + re.escape(from_host_no_port) + r"(?=\s*;|\s*$)",
+        "",
+        cookie,
+    )
+
+    if not is_https:
+        # SameSite=None → SameSite=Lax
+        cookie = re.sub(
+            r";\s*[Ss]ame[Ss]ite\s*=\s*None",
+            "; SameSite=Lax",
+            cookie,
+            flags=re.IGNORECASE,
+        )
+        # Secure 属性を除去
+        cookie = re.sub(
+            r";\s*[Ss]ecure(?=\s*;|\s*$)",
+            "",
+            cookie,
+            flags=re.IGNORECASE,
+        )
+
+    return cookie
 
 
 _REWRITE_TEXT_TYPES = (

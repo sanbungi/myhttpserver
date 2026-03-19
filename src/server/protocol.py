@@ -104,10 +104,14 @@ class HTTPResponse:
         self.headers["Content-Length"] = str(len(response_body))
         self.headers["Date"] = http_date_now()
 
-        # ヘッダー結合
+        # ヘッダー結合（値がリストの場合は同名ヘッダーを複数行展開する）
         header_lines = ""
         for k, v in self.headers.items():
-            header_lines += f"{k}: {v}\r\n"
+            if isinstance(v, list):
+                for item in v:
+                    header_lines += f"{k}: {item}\r\n"
+            else:
+                header_lines += f"{k}: {v}\r\n"
 
         # 全体結合 (ヘッダーとボディの間には空行が必要)
         return f"{status_line}{header_lines}\r\n".encode() + response_body
