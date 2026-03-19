@@ -99,6 +99,8 @@ async def resolve_route(
 ) -> HTTPResponse:
 
     request_path = normalize_request_path(request.path)
+    # プロキシ用: クエリストリングを保持
+    raw_query = _extract_query_string(request.path)
 
     try:
         # パスから使用するべきrouteを検索
@@ -333,8 +335,12 @@ async def resolve_route(
         # リバースプロキシ
         elif route.type == "proxy":
             upstrean_url = route.backend.upstream
-            proxy_request_path = _sanitize_proxy_path(
+            proxy_path_part = _sanitize_proxy_path(
                 request_path[len(route.path) :]
+            )
+            # クエリストリングを復元して upstream に転送
+            proxy_request_path = (
+                f"{proxy_path_part}?{raw_query}" if raw_query else proxy_path_part
             )
 
             logger.debug("proxy_request_path=%s", proxy_request_path)
@@ -543,6 +549,21 @@ def _get_file_meta(
     etag_base = f"{mtime_ns:x}-{size:x}"
     _FILE_META_CACHE[file_path] = (mtime_ns, size, mode, last_modified, etag_base)
     return st, last_modified, etag_base
+
+
+def _extract_query_string(raw_path: str) -> str:
+    """リクエストパスからクエリストリング部分を抽出する。なければ空文字。"""
+    if "://" in raw_path:
+        raw_path = _extract_absolute_uri_path(raw_path)
+    query_idx = raw_path.find("?")
+    if query_idx == -1:
+        return ""
+    qs = raw_path[query_idx + 1 :]
+    # フラグメントを除去
+    frag_idx = qs.find("#")
+    if frag_idx != -1:
+        qs = qs[:frag_idx]
+    return qs
 
 
 def normalize_request_path(raw_path: str) -> str:
