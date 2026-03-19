@@ -147,6 +147,12 @@ async def handle_client(
             response.set_compress(encoding)
             # サーバー名付与（バージョンを含めない）
             response.set_header("Server", "MyHTTPServer")
+            # デフォルトセキュリティヘッダー（設定で上書き可能）
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault(
+                "Referrer-Policy", "strict-origin-when-cross-origin"
+            )
 
             # Keep-Alive 判定
             conn_header = _get_header_case_insensitive(
