@@ -38,6 +38,9 @@ _SSRF_ALLOWLIST_CACHE: dict[
 
 cache = FileCache()
 
+# プロキシ upstream 応答の最大サイズ (256MB)
+_MAX_PROXY_RESPONSE_SIZE = 256 * 1024 * 1024
+
 # 拡張子と（MIMEタイプ, is_binary）の対応表
 MIME_MAP: dict[str, tuple[str, bool]] = {
     ".html": ("text/html; charset=utf-8", False),
@@ -374,8 +377,9 @@ async def resolve_route(
             logger.debug("upstream request headers=%s", pretty_block(send_header))
 
             try:
-                async with httpx.AsyncClient() as client:
-                    # HACK timeoutが決め打ち
+                async with httpx.AsyncClient(
+                    max_redirects=0,
+                ) as client:
                     resp = await client.request(
                         method=request.method,
                         url=final_url,
@@ -409,6 +413,16 @@ async def resolve_route(
                 )
 
             try:
+                # upstream 応答のボディサイズ上限チェック (256MB)
+                if len(resp.content) > _MAX_PROXY_RESPONSE_SIZE:
+                    logger.warning(
+                        "Proxy upstream response too large: %d bytes from %s%s",
+                        len(resp.content),
+                        upstrean_url,
+                        proxy_request_path,
+                    )
+                    return HTTPResponse(502)
+
                 # Set-Cookie は複数ある可能性があるため dict 変換前に個別取得
                 raw_set_cookies = resp.headers.get_list("set-cookie")
 
