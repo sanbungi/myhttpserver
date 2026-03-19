@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "myhttpserver"
-version = "0.0.1"
+version = "0.0.2"
 description = ""
 dependencies = [
     "aiofiles>=25.1.0",
