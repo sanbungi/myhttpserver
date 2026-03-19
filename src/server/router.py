@@ -352,7 +352,9 @@ async def resolve_route(
                 logger.debug("upstream headers=%s", pretty_block(dict(resp.headers)))
 
                 # 不要なヘッダー削除
-                _content_type = resp.headers["content-type"]
+                _content_type = resp.headers.get(
+                    "content-type", "application/octet-stream"
+                )
                 resp.headers.pop("content-type", None)
                 resp = drop_proxy_header(resp)
 
@@ -748,6 +750,7 @@ def drop_proxy_header(resp: httpx.Response):
         resp.headers.pop(r, None)
 
     # 以下の削除は実装方針による
+    resp.headers.pop("content-encoding", None)
     resp.headers.pop("content-length", None)
     resp.headers.pop("date", None)
     resp.headers.pop("server", None)
