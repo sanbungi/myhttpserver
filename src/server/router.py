@@ -2,10 +2,12 @@ import ipaddress
 import logging
 import os
 import re
+import socket
 import stat as statmod
 from datetime import timezone
 from email.utils import formatdate, parsedate_to_datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -327,10 +329,20 @@ async def resolve_route(
         # リバースプロキシ
         elif route.type == "proxy":
             upstrean_url = route.backend.upstream
-            proxy_request_path = request_path[len(route.path) :]
+            proxy_request_path = _sanitize_proxy_path(
+                request_path[len(route.path) :]
+            )
 
             logger.debug("proxy_request_path=%s", proxy_request_path)
             logger.debug("upstream_url=%s", upstrean_url)
+
+            # SSRF 防止: upstream の最終 URL がプライベートネットワークでないか検証
+            final_url = f"{upstrean_url}{proxy_request_path}"
+            try:
+                _validate_upstream_target(final_url)
+            except ValueError as e:
+                logger.warning("SSRF blocked: %s -> %s: %s", request.path, final_url, e)
+                return HTTPResponse(403)
 
             # upstream へ送るリクエストヘッダーを構築
             send_header = dict(request.headers)
@@ -348,10 +360,11 @@ async def resolve_route(
                     # HACK timeoutが決め打ち
                     resp = await client.request(
                         method=request.method,
-                        url=f"{upstrean_url}{proxy_request_path}",
+                        url=final_url,
                         headers=send_header,
                         content=request.body,
                         timeout=10.0,
+                        follow_redirects=False,
                     )
             except httpx.RequestError as e:
                 logger.error(
@@ -953,3 +966,92 @@ def _rewrite_proxy_urls(
         rewritten_headers[k] = v
 
     return body, rewritten_headers
+
+
+# ---------------------------------------------------------------------------
+# SSRF 防止
+# ---------------------------------------------------------------------------
+
+_SSRF_BLOCKED_NETWORKS = (
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.0.0.0/24"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::ffff:127.0.0.0/104"),
+    ipaddress.ip_network("::ffff:10.0.0.0/104"),
+    ipaddress.ip_network("::ffff:172.16.0.0/108"),
+    ipaddress.ip_network("::ffff:192.168.0.0/112"),
+)
+
+
+def _is_private_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """アドレスがプライベート/予約済みネットワークに属するか判定する。"""
+    for network in _SSRF_BLOCKED_NETWORKS:
+        if addr in network:
+            return True
+    return False
+
+
+def _validate_upstream_target(url: str) -> None:
+    """upstream URL のホストが内部ネットワークを指していないか検証する。
+
+    DNS 解決を行い、解決結果がプライベート IP の場合は拒否する。
+    これにより DNS rebinding を含む SSRF 攻撃を軽減する。
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("upstream URL にホスト名がありません")
+
+    # IP リテラルの場合は即座に判定
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if _is_private_ip(addr):
+            raise ValueError(
+                f"upstream ホスト {hostname} はプライベートネットワークです"
+            )
+        return
+    except ValueError:
+        if "プライベート" in str(hostname):
+            raise
+        # ドメイン名 — DNS 解決へ進む
+
+    # DNS 解決して全アドレスを検証
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise ValueError(f"upstream ホスト {hostname} の DNS 解決に失敗: {e}") from e
+
+    for family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if _is_private_ip(addr):
+            raise ValueError(
+                f"upstream ホスト {hostname} はプライベート IP {addr} に解決されました"
+            )
+
+
+def _sanitize_proxy_path(path: str) -> str:
+    """プロキシリクエストパスから URL 操作に使われうる文字を除去する。
+
+    - '@' はユーザー情報注入 (http://evil@internal/) に使われる
+    - '\\' は一部パーサーでスキーム区切りとして扱われる
+    - 連続スラッシュの正規化
+    """
+    # '@' と '\\' を除去
+    sanitized = path.replace("@", "").replace("\\", "/")
+    # 連続スラッシュを正規化
+    while "//" in sanitized:
+        sanitized = sanitized.replace("//", "/")
+    return sanitized
