@@ -1,0 +1,269 @@
+{
+  "total_commits": 214,
+  "period": {
+    "start": "2026-01-09",
+    "end": "2026-03-10"
+  },
+  "monthly_activity": {
+    "2026-01": 32,
+    "2026-02": 70,
+    "2026-03": 112
+  },
+  "dependency_changes": [
+    {
+      "date": "2026-01-14",
+      "commit": "71f5982",
+      "msg": "続き、テストに備えて引数実装",
+      "added": [
+        "zstandard"
+      ],
+      "removed": [],
+      "all_deps": [
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-01-14",
+      "commit": "ad44ba1",
+      "msg": "gzip対応",
+      "added": [],
+      "removed": [
+        "zstandard"
+      ],
+      "all_deps": []
+    },
+    {
+      "date": "2026-01-15",
+      "commit": "e3d54c7",
+      "msg": "ベースラインとしてRFC 2616をClaudeに読み込ませテストケースを生成した",
+      "added": [
+        "zstandard"
+      ],
+      "removed": [],
+      "all_deps": [
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-22",
+      "commit": "4c90e04",
+      "msg": "routeタイプ rawに対応し、固定のメッセージ返却に対応、ただしerror_response関数に依存しており、任意の番号のレスポンスを返せる関数が必要",
+      "added": [
+        "pyhcl"
+      ],
+      "removed": [],
+      "all_deps": [
+        "pyhcl",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-25",
+      "commit": "45d27ab",
+      "msg": "Etagを生成してレスポンスを返す、現状はハッシュによる強い検証",
+      "added": [
+        "xxhash"
+      ],
+      "removed": [],
+      "all_deps": [
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-25",
+      "commit": "cf475ac",
+      "msg": "簡易的なドキュメントを追加",
+      "added": [],
+      "removed": [
+        "xxhash"
+      ],
+      "all_deps": [
+        "pyhcl",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-26",
+      "commit": "a3e75d7",
+      "msg": "Merge pull request #29 from sanbungi/etag_cache_system",
+      "added": [
+        "xxhash"
+      ],
+      "removed": [],
+      "all_deps": [
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-26",
+      "commit": "9299e57",
+      "msg": "Merge pull request #27 from sanbungi/new-config",
+      "added": [],
+      "removed": [
+        "xxhash"
+      ],
+      "all_deps": [
+        "pyhcl",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-27",
+      "commit": "04ebf6f",
+      "msg": "軽微なエラーを修正",
+      "added": [
+        "aiofiles",
+        "httpx",
+        "xxhash"
+      ],
+      "removed": [],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-27",
+      "commit": "1ffe285",
+      "msg": "Config機能を移植",
+      "added": [],
+      "removed": [
+        "aiofiles",
+        "httpx"
+      ],
+      "all_deps": [
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-02-28",
+      "commit": "11bf373",
+      "msg": "ETagを移植",
+      "added": [
+        "aiofiles",
+        "httpx"
+      ],
+      "removed": [],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-03-01",
+      "commit": "ccba21f",
+      "msg": "uvloopを導入、1.5倍の高速化",
+      "added": [
+        "uvloop"
+      ],
+      "removed": [],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "uvloop",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-03-01",
+      "commit": "5b2162a",
+      "msg": "File読み込みをAsyncに",
+      "added": [],
+      "removed": [
+        "uvloop"
+      ],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-03-02",
+      "commit": "ffeee32",
+      "msg": "Merge branch 'more_performance' into rewrite_core_system",
+      "added": [
+        "uvloop"
+      ],
+      "removed": [],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "uvloop",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-03-04",
+      "commit": "c84d4a8",
+      "msg": "リバースプロキシ機能を修復、ヘッダーの重複を選択的に解決",
+      "added": [
+        "icecream"
+      ],
+      "removed": [],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "icecream",
+        "pyhcl",
+        "uvloop",
+        "xxhash",
+        "zstandard"
+      ]
+    },
+    {
+      "date": "2026-03-04",
+      "commit": "7e334ac",
+      "msg": "Merge pull request #30 from sanbungi/rewrite_core_system",
+      "added": [],
+      "removed": [
+        "icecream"
+      ],
+      "all_deps": [
+        "aiofiles",
+        "httpx",
+        "pyhcl",
+        "uvloop",
+        "xxhash",
+        "zstandard"
+      ]
+    }
+  ],
+  "category_counts": {
+    "performance": 3,
+    "bug_fix": 19,
+    "security": 18,
+    "testing": 26,
+    "refactor": 31,
+    "feature": 117
+  },
+  "topic_counts": {
+    "SSL/TLS": 7,
+    "圧縮 (gzip/zstd)": 8,
+    "非同期 (async)": 4,
+    "マルチプロセス": 3,
+    "キャッシュ・ETag": 12,
+    "設定ファイル": 22,
+    "セキュリティ": 5,
+    "テスト": 34,
+    "パフォーマンス": 2
+  }
+}
