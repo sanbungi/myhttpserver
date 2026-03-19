@@ -218,6 +218,9 @@ class RedirectConfig:
         return cls(**data)
 
 
+_DEFAULT_CACHE_CONTROL = "max-age=3600"
+
+
 @dataclass
 class RouteConfig:
     path: str
@@ -225,6 +228,7 @@ class RouteConfig:
     methods: Optional[List[str]] = None
     index: List[str] = field(default_factory=list)
     autoindex: bool = False
+    cache_control: str = _DEFAULT_CACHE_CONTROL
     headers: Optional[HeadersConfig] = None
     backend: Optional[BackendConfig] = None
     respond: Optional[RespondConfig] = None
@@ -238,6 +242,9 @@ class RouteConfig:
             type=data.get("type", "static"),
             index=data.get("index", []),
             autoindex=normalize_bool(data.get("autoindex", False)),
+            cache_control=str(
+                data.get("cache_control", _DEFAULT_CACHE_CONTROL)
+            ),
             methods=data.get("methods", {}),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
             backend=BackendConfig.from_dict(data.get("backend", {})),

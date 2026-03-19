@@ -40,6 +40,8 @@ cache = FileCache()
 
 # プロキシ upstream 応答の最大サイズ (256MB)
 _MAX_PROXY_RESPONSE_SIZE = 256 * 1024 * 1024
+# 静的配信のデフォルト Cache-Control
+_DEFAULT_STATIC_CACHE_CONTROL = "max-age=3600"
 
 # 拡張子と（MIMEタイプ, is_binary）の対応表
 MIME_MAP: dict[str, tuple[str, bool]] = {
@@ -138,6 +140,7 @@ async def resolve_route(
 
         # 静的ファイル配信
         if route.type == "static":
+            cc = getattr(route, "cache_control", _DEFAULT_STATIC_CACHE_CONTROL)
             # パス正規化
             if request_path == "/":
                 index_file = route.index[0] if route.index else "index.html"
@@ -179,7 +182,7 @@ async def resolve_route(
                         if cache_hit:
                             headers = {
                                 "Last-Modified": auto_last_modified,
-                                "Cache-Control": "max-age=3600",
+                                "Cache-Control": cc,
                             }
                             if auto_etag_header:
                                 headers["ETag"] = auto_etag_header
@@ -193,7 +196,7 @@ async def resolve_route(
                         if cache_hit:
                             headers = {
                                 "Last-Modified": auto_last_modified,
-                                "Cache-Control": "max-age=3600",
+                                "Cache-Control": cc,
                             }
                             if auto_etag_header:
                                 headers["ETag"] = auto_etag_header
@@ -201,7 +204,7 @@ async def resolve_route(
 
                         headers = {
                             "Last-Modified": auto_last_modified,
-                            "Cache-Control": "max-age=3600",
+                            "Cache-Control": cc,
                         }
                         if auto_etag_header:
                             headers["ETag"] = auto_etag_header
@@ -228,7 +231,7 @@ async def resolve_route(
             if cache_hit:
                 headers = {
                     "Last-Modified": last_modify,
-                    "Cache-Control": "max-age=3600",
+                    "Cache-Control": cc,
                     "Accept-Ranges": "bytes",
                 }
                 if etag_header:
@@ -244,7 +247,7 @@ async def resolve_route(
             if cache_hit:
                 headers = {
                     "Last-Modified": last_modify,
-                    "Cache-Control": "max-age=3600",
+                    "Cache-Control": cc,
                     "Accept-Ranges": "bytes",
                 }
                 if etag_header:
@@ -265,10 +268,9 @@ async def resolve_route(
                     text = await cache.read_from_disk(server_file_path, mode="r")
                 content = text.encode("utf-8")
 
-            # HACK max-ageが決め打ち
             response_headers = {
                 "Last-Modified": last_modify,
-                "Cache-Control": "max-age=3600",
+                "Cache-Control": cc,
                 "Accept-Ranges": "bytes",
             }
 
