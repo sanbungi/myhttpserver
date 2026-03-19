@@ -17,6 +17,7 @@ from .router import (
 
 MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
 MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
+MAX_CHUNK_LINE_SIZE = 64  # チャンクサイズ行の最大長
 HEADER_TIMEOUT_SECONDS = 5.0
 BODY_TIMEOUT_SECONDS = 10.0
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -250,7 +251,25 @@ async def safe_load(
         raise HttpError(431)
 
     header_part = header_block[:-4]
+
+    transfer_encoding = _parse_transfer_encoding(header_part)
     content_length = _parse_content_length(header_part)
+
+    # Transfer-Encoding と Content-Length の同時存在を拒否
+    if transfer_encoding is not None and content_length > 0:
+        logger.warning("Both Transfer-Encoding and Content-Length from %s", peer_ip)
+        raise HttpError(400)
+
+    # chunked転送
+    if transfer_encoding is not None:
+        if transfer_encoding != "chunked":
+            raise HttpError(501)
+        full_body = await _read_chunked_body(reader, peer_ip)
+        if full_body is None:
+            return None
+        # パース前にTransfer-Encodingヘッダーを除去（デコード済みのため不要）
+        header_part = _strip_header_from_raw(header_part, b"transfer-encoding")
+        return header_part, full_body
 
     # 413 Payload Too Large
     if content_length >= MAX_BODY_SIZE:
@@ -395,6 +414,7 @@ def _apply_if_none_match_precondition(
 
 
 def _parse_content_length(header_part: bytes) -> int:
+    found_value = None
     for line in header_part.split(b"\r\n"):
         if line[:15].lower() != b"content-length:":
             continue
@@ -410,6 +430,94 @@ def _parse_content_length(header_part: bytes) -> int:
 
         if content_length < 0:
             raise HttpError(400)
-        return content_length
 
-    return 0
+        # 異なる値を持つ複数Content-Lengthを拒否
+        if found_value is not None and found_value != content_length:
+            raise HttpError(400)
+        found_value = content_length
+
+    return found_value if found_value is not None else 0
+
+
+def _parse_transfer_encoding(header_part: bytes) -> Optional[str]:
+    for line in header_part.split(b"\r\n"):
+        if line[:18].lower() != b"transfer-encoding:":
+            continue
+        return line[18:].strip().decode("ascii", errors="ignore").lower()
+    return None
+
+
+async def _read_chunked_body(
+    reader: asyncio.StreamReader, peer_ip: str
+) -> Optional[bytes]:
+    buf = bytearray()
+    try:
+        async with asyncio.timeout(BODY_TIMEOUT_SECONDS):
+            while True:
+                # チャンクサイズ行を読む
+                try:
+                    size_line = await reader.readuntil(b"\r\n")
+                except asyncio.LimitOverrunError:
+                    raise HttpError(400)
+
+                if len(size_line) > MAX_CHUNK_LINE_SIZE:
+                    raise HttpError(400)
+
+                size_str = size_line[:-2].decode("ascii", errors="ignore").strip()
+
+                # chunk-extension を除去 (";ext=value" 等)
+                semicolon = size_str.find(";")
+                if semicolon != -1:
+                    size_str = size_str[:semicolon].strip()
+
+                try:
+                    chunk_size = int(size_str, 16)
+                except ValueError:
+                    raise HttpError(400)
+
+                if chunk_size < 0:
+                    raise HttpError(400)
+
+                # last-chunk (size == 0)
+                if chunk_size == 0:
+                    # トレーラーヘッダーを読み飛ばす（空行まで）
+                    while True:
+                        trailer_line = await reader.readuntil(b"\r\n")
+                        if trailer_line == b"\r\n":
+                            break
+                    break
+
+                # ボディサイズ上限チェック
+                if len(buf) + chunk_size > MAX_BODY_SIZE:
+                    logger.warning(
+                        "Chunked body too large (%d + %d bytes) from %s",
+                        len(buf),
+                        chunk_size,
+                        peer_ip,
+                    )
+                    raise HttpError(413)
+
+                # チャンクデータ本体を読む
+                chunk_data = await reader.readexactly(chunk_size)
+                buf.extend(chunk_data)
+
+                # チャンクデータ末尾の CRLF を消費
+                await reader.readexactly(2)
+
+    except HttpError:
+        raise
+    except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
+        return None
+
+    return bytes(buf)
+
+
+def _strip_header_from_raw(header_part: bytes, header_name_lower: bytes) -> bytes:
+    lines = header_part.split(b"\r\n")
+    filtered = []
+    for line in lines:
+        colon_idx = line.find(b":")
+        if colon_idx > 0 and line[:colon_idx].strip().lower() == header_name_lower:
+            continue
+        filtered.append(line)
+    return b"\r\n".join(filtered)
