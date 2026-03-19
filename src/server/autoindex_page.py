@@ -53,6 +53,7 @@ def _snapshot_directory(directory_path: str) -> None:
                 (entry.name, entry.is_dir(follow_symlinks=False))
                 for entry in entries
                 if entry.name not in {".", ".."}
+                and not entry.name.startswith(".")
             ]
     except OSError:
         return
