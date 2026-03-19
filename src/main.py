@@ -28,7 +28,6 @@ except ModuleNotFoundError:
     from server.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
-MAX_CONNECTIONS_PER_IP = 20
 
 # ループのエンジンに高パフォーマンスなuvloopを用いる
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -114,11 +113,12 @@ def run_worker_process(
     shared_ip_lock=None,
     ban_list_file: str | None = None,
     debug_ip_table: bool = False,
+    max_connections_per_ip: int = 20,
 ):
     setup_logging(**_build_logging_kwargs(logging_config))
     prime_autoindex_cache_for_server(config)
     ip_table = InMemoryIPTable(
-        max_connections_per_ip=MAX_CONNECTIONS_PER_IP,
+        max_connections_per_ip=max_connections_per_ip,
         active_connections=shared_ip_connections,
         lock=shared_ip_lock,
         ban_list_file=ban_list_file,
@@ -175,6 +175,7 @@ def main():
             app_config.global_settings.max_connections,
             ban_list_file=app_config.global_settings.ban_list_file,
             debug_ip_table=args.debug_ip_table,
+            max_connections_per_ip=app_config.global_settings.max_connections_per_ip,
         )
         return
 
@@ -223,6 +224,7 @@ def main():
                         shared_ip_lock,
                         app_config.global_settings.ban_list_file,
                         args.debug_ip_table,
+                        app_config.global_settings.max_connections_per_ip,
                     ),
                 )
                 p.start()

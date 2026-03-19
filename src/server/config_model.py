@@ -284,6 +284,7 @@ class ServerConfig:
 class GlobalConfig:
     worker_processes: int = 1
     max_connections: int = 1024
+    max_connections_per_ip: int = 20
     timeout: str = "30s"
     timeout_keepalive: str = "65s"
     ban_list_file: Optional[str] = None
@@ -315,6 +316,9 @@ class GlobalConfig:
                 data.get("worker_processes"), 1
             ),
             max_connections=cls._to_positive_int(data.get("max_connections"), 1024),
+            max_connections_per_ip=cls._to_positive_int(
+                data.get("max_connections_per_ip"), 20
+            ),
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
             ban_list_file=data.get("ban_list_file") or nested_ban_list_file,
