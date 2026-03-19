@@ -1,6 +1,6 @@
 # myhttpserver
 
-[![Build Wheel](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml)
+[![Build](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/build-wheel.yml)
 [![Pytest](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml/badge.svg)](https://github.com/sanbungi/myhttpserver/actions/workflows/pytest.yml)
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/2gwju.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 
@@ -41,9 +41,9 @@ https://myhttp.betteruptime.com/
 - [x] gzipレスポンス圧縮
 - [x] ETag生成
 - [x] HCLベース設定ファイル
-- [ ] Cookieの受け渡し、キャッシュ無効処理
-- [ ] ユーザー情報など、キャッシュされてはいけない場合があるため、詳細なテストを実施
-- [ ] ストリーミングによる分割レスポンス
+- [x] Cookieの受け渡し、キャッシュ無効処理
+- [x] ユーザー情報など、キャッシュされてはいけない場合があるため、詳細なテストを実施
+- [x] ストリーミングによる分割レスポンス
 - [ ] ルールベースのレート制限
 
 
