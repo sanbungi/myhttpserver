@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 _CWD = os.getcwd()
 STATIC_DIR = (_CWD[:-1] if _CWD.endswith("/") and _CWD != "/" else _CWD) + "/html"
 _FILE_META_CACHE: dict[str, tuple[int, int, int, str, str]] = {}
+_SSRF_ALLOWLIST_CACHE: dict[
+    tuple[str, tuple[str, ...]],
+    tuple["ipaddress.IPv4Network | ipaddress.IPv6Network", ...],
+] = {}
 
 cache = FileCache()
 
@@ -337,9 +341,17 @@ async def resolve_route(
             logger.debug("upstream_url=%s", upstrean_url)
 
             # SSRF 防止: upstream の最終 URL がプライベートネットワークでないか検証
+            # 設定で明示された upstream ホストと ssrf_allow は許可する
             final_url = f"{upstrean_url}{proxy_request_path}"
+            cache_key = (upstrean_url, tuple(route.backend.ssrf_allow))
+            ssrf_allowlist = _SSRF_ALLOWLIST_CACHE.get(cache_key)
+            if ssrf_allowlist is None:
+                ssrf_allowlist = build_ssrf_allowlist(
+                    upstrean_url, route.backend.ssrf_allow
+                )
+                _SSRF_ALLOWLIST_CACHE[cache_key] = ssrf_allowlist
             try:
-                _validate_upstream_target(final_url)
+                _validate_upstream_target(final_url, ssrf_allowlist)
             except ValueError as e:
                 logger.warning("SSRF blocked: %s -> %s: %s", request.path, final_url, e)
                 return HTTPResponse(403)
@@ -1014,10 +1026,101 @@ def _is_private_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return False
 
 
-def _validate_upstream_target(url: str) -> None:
+def _is_allowed_by_ssrf_allowlist(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    allowed_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> bool:
+    """アドレスが SSRF 許可リストに含まれるか判定する。"""
+    for network in allowed_networks:
+        if addr in network:
+            return True
+    return False
+
+
+def build_ssrf_allowlist(
+    upstream_url: str, extra_allow: list[str] | None = None
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """設定で明示されたupstreamホストとssrf_allowからSSRF許可ネットワーク一覧を構築する。
+
+    - upstream URL のホスト（IP リテラル、またはDNS解決結果）を自動で許可
+    - ssrf_allow に記載された IP/CIDR を追加許可
+    """
+    allowed: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+
+    # upstream ホストを許可リストに追加
+    parsed = urlparse(upstream_url)
+    hostname = parsed.hostname
+    if hostname:
+        try:
+            addr = ipaddress.ip_address(hostname)
+            # 単一IPを /32 or /128 としてネットワーク化
+            allowed.append(
+                ipaddress.ip_network(f"{addr}/{addr.max_prefixlen}", strict=False)
+            )
+        except ValueError:
+            # ドメイン名 — DNS 解決して許可
+            try:
+                addrinfo = socket.getaddrinfo(
+                    hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
+                )
+                for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+                    try:
+                        addr = ipaddress.ip_address(sockaddr[0])
+                        allowed.append(
+                            ipaddress.ip_network(
+                                f"{addr}/{addr.max_prefixlen}", strict=False
+                            )
+                        )
+                    except ValueError:
+                        continue
+            except socket.gaierror:
+                pass
+
+    # ssrf_allow の明示エントリを追加
+    for entry in extra_allow or []:
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                allowed.append(ipaddress.ip_network(entry, strict=False))
+            else:
+                addr = ipaddress.ip_address(entry)
+                allowed.append(
+                    ipaddress.ip_network(f"{addr}/{addr.max_prefixlen}", strict=False)
+                )
+        except ValueError:
+            # ドメイン名の場合はDNS解決
+            try:
+                addrinfo = socket.getaddrinfo(
+                    entry, None, socket.AF_UNSPEC, socket.SOCK_STREAM
+                )
+                for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+                    try:
+                        addr = ipaddress.ip_address(sockaddr[0])
+                        allowed.append(
+                            ipaddress.ip_network(
+                                f"{addr}/{addr.max_prefixlen}", strict=False
+                            )
+                        )
+                    except ValueError:
+                        continue
+            except socket.gaierror:
+                logger.warning("ssrf_allow entry DNS resolution failed: %s", entry)
+
+    return tuple(allowed)
+
+
+def _validate_upstream_target(
+    url: str,
+    ssrf_allowlist: tuple[
+        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+    ] = (),
+) -> None:
     """upstream URL のホストが内部ネットワークを指していないか検証する。
 
     DNS 解決を行い、解決結果がプライベート IP の場合は拒否する。
+    ただし ssrf_allowlist に含まれる IP は許可する。
     これにより DNS rebinding を含む SSRF 攻撃を軽減する。
     """
     parsed = urlparse(url)
@@ -1028,7 +1131,9 @@ def _validate_upstream_target(url: str) -> None:
     # IP リテラルの場合は即座に判定
     try:
         addr = ipaddress.ip_address(hostname)
-        if _is_private_ip(addr):
+        if _is_private_ip(addr) and not _is_allowed_by_ssrf_allowlist(
+            addr, ssrf_allowlist
+        ):
             raise ValueError(
                 f"upstream ホスト {hostname} はプライベートネットワークです"
             )
@@ -1050,7 +1155,9 @@ def _validate_upstream_target(url: str) -> None:
             addr = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        if _is_private_ip(addr):
+        if _is_private_ip(addr) and not _is_allowed_by_ssrf_allowlist(
+            addr, ssrf_allowlist
+        ):
             raise ValueError(
                 f"upstream ホスト {hostname} はプライベート IP {addr} に解決されました"
             )

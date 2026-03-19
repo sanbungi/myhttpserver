@@ -158,16 +158,26 @@ class BackendConfig:
     timeout: str = "30s"
     headers: Optional[HeadersConfig] = None
     rewrite_url: Optional[str] = None
+    ssrf_allow: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict) -> "BackendConfig":
         if not data:
             return None
+        raw_ssrf_allow = data.get("ssrf_allow", [])
+        if isinstance(raw_ssrf_allow, str):
+            raw_ssrf_allow = [raw_ssrf_allow]
+        ssrf_allow: List[str] = []
+        if isinstance(raw_ssrf_allow, list):
+            for item in raw_ssrf_allow:
+                if isinstance(item, str) and item.strip():
+                    ssrf_allow.append(item.strip())
         return cls(
             upstream=data.get("upstream", ""),
             timeout=data.get("timeout", "30s"),
             headers=HeadersConfig.from_dict(data.get("headers", {})),
             rewrite_url=data.get("rewrite_url"),
+            ssrf_allow=ssrf_allow,
         )
 
 
