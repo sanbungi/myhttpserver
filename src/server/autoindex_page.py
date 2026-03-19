@@ -175,7 +175,7 @@ def _build_autoindex_html(
         [
             "  </ul>",
             "  <hr>",
-            "  <address>MyHTTPServer/0.1</address>",
+            "  <address>MyHTTPServer</address>",
             "</body>",
             "</html>",
         ]

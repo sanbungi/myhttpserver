@@ -22,7 +22,7 @@ def build_error_page_html(status: int, reason: str) -> str:
 <body>
   <h1>{CODE} {REASON}</h1>
   <hr>
-  <address>MyHTTPServer/0.1</address>
+  <address>MyHTTPServer</address>
 </body>
 </html>"""
     return template.format(CODE=status, REASON=reason).lstrip()

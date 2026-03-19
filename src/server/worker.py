@@ -145,8 +145,8 @@ async def handle_client(
                 response.prepare_default_error_validators()
             # 圧縮
             response.set_compress(encoding)
-            # サーバー名付与
-            response.set_header("Server", "MyHTTPServer/0.1")
+            # サーバー名付与（バージョンを含めない）
+            response.set_header("Server", "MyHTTPServer")
 
             # Keep-Alive 判定
             conn_header = _get_header_case_insensitive(
