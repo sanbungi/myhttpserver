@@ -7,7 +7,7 @@ from functools import partial
 
 from .config_model import DEFAULT_MAX_BODY_SIZE, ServerConfig
 from .ip_table import InMemoryIPTable
-from .worker import WorkerConnectionLimiter, handle_client
+from .worker import DUMP_NONE, WorkerConnectionLimiter, handle_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,14 @@ class HTTPServer:
         ip_table: InMemoryIPTable | None = None,
         max_connections_per_worker: int = 1024,
         max_body_size: int = DEFAULT_MAX_BODY_SIZE,
+        request_dump_level: int = DUMP_NONE,
     ):
         self.host = host
         self.port = port
         self.config = config
         self.ip_table = ip_table
         self.max_body_size = max_body_size
+        self.request_dump_level = request_dump_level
         self.worker_limiter = WorkerConnectionLimiter(max_connections_per_worker)
 
     def _create_socket(self):
@@ -109,6 +111,7 @@ class HTTPServer:
                         ip_table=self.ip_table,
                         worker_limiter=self.worker_limiter,
                         max_body_size=self.max_body_size,
+                        request_dump_level=self.request_dump_level,
                     ),
                     sock=sock,
                     ssl=context,
@@ -125,6 +128,8 @@ class HTTPServer:
                     config=self.config,
                     ip_table=self.ip_table,
                     worker_limiter=self.worker_limiter,
+                    max_body_size=self.max_body_size,
+                    request_dump_level=self.request_dump_level,
                 ),
                 sock=sock,
             )

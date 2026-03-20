@@ -20,12 +20,14 @@ try:
     from src.server.core import HTTPServer
     from src.server.ip_table import InMemoryIPTable
     from src.server.logging_config import setup_logging
+    from src.server.worker import setup_dump_logger
 except ModuleNotFoundError:
     from server.autoindex_page import prime_autoindex_cache_for_server
     from server.config_model import AppConfig, LoggingConfig, RouteConfig, ServerConfig
     from server.core import HTTPServer
     from server.ip_table import InMemoryIPTable
     from server.logging_config import setup_logging
+    from server.worker import setup_dump_logger
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +86,27 @@ def parse_args():
         default=False,
         help="Enable realtime IP table logs (acquire/release/deny)",
     )
+    parser.add_argument(
+        "--dump-requests",
+        choices=["line", "headers", "full"],
+        default=None,
+        dest="dump_requests",
+        help=(
+            "Dump requests for debugging. "
+            "line: request line + status, "
+            "headers: + req/res headers, "
+            "full: + req/res body (first 512 bytes)"
+        ),
+    )
 
     return parser.parse_args()
+
+
+_DUMP_LEVEL = {"line": 1, "headers": 2, "full": 3}
+
+
+def _parse_dump_level(value: str | None) -> int:
+    return _DUMP_LEVEL.get(value, 0)
 
 
 def _build_logging_kwargs(logging_config: LoggingConfig) -> dict:
@@ -115,8 +136,11 @@ def run_worker_process(
     debug_ip_table: bool = False,
     max_connections_per_ip: int = 20,
     max_body_size: int = 1024 * 1024 * 2,
+    request_dump_level: int = 0,
 ):
     setup_logging(**_build_logging_kwargs(logging_config))
+    if request_dump_level:
+        setup_dump_logger()
     prime_autoindex_cache_for_server(config)
     ip_table = InMemoryIPTable(
         max_connections_per_ip=max_connections_per_ip,
@@ -132,6 +156,7 @@ def run_worker_process(
         ip_table=ip_table,
         max_connections_per_worker=max_connections_per_worker,
         max_body_size=max_body_size,
+        request_dump_level=request_dump_level,
     )
 
     try:
@@ -179,6 +204,7 @@ def main():
             debug_ip_table=args.debug_ip_table,
             max_connections_per_ip=app_config.global_settings.max_connections_per_ip,
             max_body_size=app_config.global_settings.max_body_size,
+            request_dump_level=_parse_dump_level(args.dump_requests),
         )
         return
 
@@ -229,6 +255,7 @@ def main():
                         args.debug_ip_table,
                         app_config.global_settings.max_connections_per_ip,
                         app_config.global_settings.max_body_size,
+                        _parse_dump_level(args.dump_requests),
                     ),
                 )
                 p.start()

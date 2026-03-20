@@ -35,6 +35,19 @@ HTTP_METHODS = {
 }
 
 logger = logging.getLogger(__name__)
+_dump_logger = logging.getLogger(f"{__name__}.dump")
+
+
+def setup_dump_logger() -> None:
+    """--dump-requests が有効なときに呼び出す。root ロガーとは独立して stdout へ出力する。"""
+    if _dump_logger.handlers:
+        return
+    _dump_logger.setLevel(logging.INFO)
+    _dump_logger.propagate = False
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    _dump_logger.addHandler(handler)
 _DEFAULT_IP_TABLE = InMemoryIPTable(
     max_connections_per_ip=DEFAULT_MAX_CONNECTIONS_PER_IP
 )
@@ -66,6 +79,59 @@ class WorkerConnectionLimiter:
 
 _DEFAULT_WORKER_CONNECTION_LIMITER = WorkerConnectionLimiter()
 
+# --dump-requests レベル定数
+DUMP_NONE = 0
+DUMP_LINE = 1
+DUMP_HEADERS = 2
+DUMP_FULL = 3
+
+_BINARY_CONTENT_TYPE_PREFIXES = (
+    "image/",
+    "audio/",
+    "video/",
+    "application/octet-stream",
+    "application/pdf",
+    "application/zip",
+    "font/",
+)
+
+
+def _is_binary_content_type(content_type: str) -> bool:
+    ct = content_type.split(";")[0].strip().lower()
+    return any(ct.startswith(p) for p in _BINARY_CONTENT_TYPE_PREFIXES)
+
+
+def _log_request_dump(
+    level: int,
+    peer_ip: str,
+    request: HTTPRequest,
+    response: HTTPResponse,
+) -> None:
+    line = f"[DUMP] {peer_ip} {request.method} {request.path} {request.version} -> {response.status}"
+
+    if level == DUMP_LINE:
+        _dump_logger.info(line)
+        return
+
+    parts = [line]
+    parts.append(f"  req-headers: {pretty_block(dict(request.headers))}")
+    parts.append(f"  res-headers: {pretty_block(dict(response.headers))}")
+
+    if level >= DUMP_FULL:
+        body = request.body or b""
+        parts.append(f"  req-body ({len(body)} bytes): {body!r}")
+
+        res_body = response.body or b""
+        if isinstance(res_body, str):
+            res_body = res_body.encode()
+        res_ct = response.headers.get("Content-Type", "")
+        if _is_binary_content_type(res_ct):
+            parts.append(f"  res-body ({len(res_body)} bytes): <binary: {res_ct}>")
+        else:
+            parts.append(f"  res-body ({len(res_body)} bytes): {res_body!r}")
+
+    _dump_logger.info("\n".join(parts))
+
 
 async def handle_client(
     reader: asyncio.StreamReader,
@@ -74,6 +140,7 @@ async def handle_client(
     ip_table: Optional[InMemoryIPTable] = None,
     worker_limiter: Optional[WorkerConnectionLimiter] = None,
     max_body_size: int = DEFAULT_MAX_BODY_SIZE,
+    request_dump_level: int = DUMP_NONE,
 ):
     peer = writer.get_extra_info("peername")
     ip = _extract_peer_ip(peer)
@@ -181,6 +248,9 @@ async def handle_client(
                 # 送信完了待ち
                 await writer.drain()
 
+                if request_dump_level:
+                    _log_request_dump(request_dump_level, ip, request, response)
+
                 # 正常アクセスログ記録
                 log_access(
                     remote_addr=ip,
@@ -205,6 +275,9 @@ async def handle_client(
         writer.write(response_bytes)
 
         await writer.drain()
+
+        if request_dump_level and request:
+            _log_request_dump(request_dump_level, ip, request, response)
 
         # 規定されたエラーコードを返したアクセスログ記録
         log_access(
