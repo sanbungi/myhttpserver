@@ -32,7 +32,7 @@ jobs:
         run: uv sync --dev
 
       - name: Generate CFG PDFs
-        run: ./script/generate_cfg_all_pdf.sh
+        run: ./scripts/generate_cfg_all_pdf.sh
 
       - name: Upload CFG PDF artifact
         id: upload_pdf
