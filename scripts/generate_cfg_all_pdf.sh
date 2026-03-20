@@ -9,4 +9,4 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   exit 2
 fi
 
-exec "$PYTHON_BIN" "$ROOT_DIR/script/generate_cfg.py" src --format pdf --output-dir dist/cfg "$@"
+exec "$PYTHON_BIN" "$ROOT_DIR/scripts/generate_cfg.py" src --format pdf --output-dir dist/cfg "$@"
