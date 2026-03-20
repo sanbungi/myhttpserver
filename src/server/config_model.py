@@ -297,6 +297,9 @@ class ServerConfig:
         )
 
 
+DEFAULT_MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
+
+
 @dataclass
 class GlobalConfig:
     worker_processes: int = 1
@@ -305,6 +308,7 @@ class GlobalConfig:
     timeout: str = "30s"
     timeout_keepalive: str = "65s"
     ban_list_file: Optional[str] = None
+    max_body_size: int = DEFAULT_MAX_BODY_SIZE
     compression_methods: List[str] = field(
         default_factory=lambda: list(DEFAULT_COMPRESSION_METHODS)
     )
@@ -339,6 +343,9 @@ class GlobalConfig:
             timeout=data.get("timeout", "30s"),
             timeout_keepalive=data.get("timeout_keepalive", "65s"),
             ban_list_file=data.get("ban_list_file") or nested_ban_list_file,
+            max_body_size=cls._to_positive_int(
+                data.get("max_body_size"), DEFAULT_MAX_BODY_SIZE
+            ),
             compression_methods=normalize_compression_methods(
                 data.get("compression_methods")
             ),

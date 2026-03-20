@@ -114,6 +114,7 @@ def run_worker_process(
     ban_list_file: str | None = None,
     debug_ip_table: bool = False,
     max_connections_per_ip: int = 20,
+    max_body_size: int = 1024 * 1024 * 2,
 ):
     setup_logging(**_build_logging_kwargs(logging_config))
     prime_autoindex_cache_for_server(config)
@@ -130,6 +131,7 @@ def run_worker_process(
         config=config,
         ip_table=ip_table,
         max_connections_per_worker=max_connections_per_worker,
+        max_body_size=max_body_size,
     )
 
     try:
@@ -176,6 +178,7 @@ def main():
             ban_list_file=app_config.global_settings.ban_list_file,
             debug_ip_table=args.debug_ip_table,
             max_connections_per_ip=app_config.global_settings.max_connections_per_ip,
+            max_body_size=app_config.global_settings.max_body_size,
         )
         return
 
@@ -225,6 +228,7 @@ def main():
                         app_config.global_settings.ban_list_file,
                         args.debug_ip_table,
                         app_config.global_settings.max_connections_per_ip,
+                        app_config.global_settings.max_body_size,
                     ),
                 )
                 p.start()

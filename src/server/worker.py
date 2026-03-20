@@ -4,7 +4,7 @@ import re
 import threading
 from typing import Any, Optional, Tuple
 
-from .config_model import ServerConfig
+from .config_model import DEFAULT_MAX_BODY_SIZE, ServerConfig
 from .etag_utils import weak_etag_equal
 from .ip_table import InMemoryIPTable
 from .logging_config import log_access, pretty_block
@@ -16,7 +16,6 @@ from .router import (
 )
 
 MAX_HEADER_SIZE = 1024 * 1024 * 2  # 2MB
-MAX_BODY_SIZE = 1024 * 1024 * 2  # 2MB
 MAX_CHUNK_LINE_SIZE = 64  # チャンクサイズ行の最大長
 HEADER_TIMEOUT_SECONDS = 5.0
 BODY_TIMEOUT_SECONDS = 10.0
@@ -74,6 +73,7 @@ async def handle_client(
     config: ServerConfig,
     ip_table: Optional[InMemoryIPTable] = None,
     worker_limiter: Optional[WorkerConnectionLimiter] = None,
+    max_body_size: int = DEFAULT_MAX_BODY_SIZE,
 ):
     peer = writer.get_extra_info("peername")
     ip = _extract_peer_ip(peer)
@@ -112,7 +112,7 @@ async def handle_client(
         while True:
             request = None
             # パケットのサイズが大きければcloseされる。
-            loaded_data = await safe_load(reader, writer, ip)
+            loaded_data = await safe_load(reader, writer, ip, max_body_size)
 
             # 切断、タイムアウト、またはエラー送信済みのためループを抜けて接続を切る
             if loaded_data is None:
@@ -239,7 +239,10 @@ async def handle_client(
 
 
 async def safe_load(
-    reader: asyncio.StreamReader, writer: asyncio.StreamWriter, peer_ip: str
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    peer_ip: str,
+    max_body_size: int = DEFAULT_MAX_BODY_SIZE,
 ) -> Optional[Tuple[bytes, bytes]]:
     try:
         async with asyncio.timeout(HEADER_TIMEOUT_SECONDS):
@@ -270,7 +273,7 @@ async def safe_load(
     if transfer_encoding is not None:
         if transfer_encoding != "chunked":
             raise HttpError(501)
-        full_body = await _read_chunked_body(reader, peer_ip)
+        full_body = await _read_chunked_body(reader, peer_ip, max_body_size)
         if full_body is None:
             return None
         # パース前にTransfer-Encodingヘッダーを除去（デコード済みのため不要）
@@ -278,7 +281,7 @@ async def safe_load(
         return header_part, full_body
 
     # 413 Payload Too Large
-    if content_length >= MAX_BODY_SIZE:
+    if content_length >= max_body_size:
         logger.warning("Body too large (%s bytes) from %s", content_length, peer_ip)
         raise HttpError(413)
 
@@ -454,7 +457,9 @@ def _parse_transfer_encoding(header_part: bytes) -> Optional[str]:
 
 
 async def _read_chunked_body(
-    reader: asyncio.StreamReader, peer_ip: str
+    reader: asyncio.StreamReader,
+    peer_ip: str,
+    max_body_size: int = DEFAULT_MAX_BODY_SIZE,
 ) -> Optional[bytes]:
     buf = bytearray()
     try:
@@ -494,7 +499,7 @@ async def _read_chunked_body(
                     break
 
                 # ボディサイズ上限チェック
-                if len(buf) + chunk_size > MAX_BODY_SIZE:
+                if len(buf) + chunk_size > max_body_size:
                     logger.warning(
                         "Chunked body too large (%d + %d bytes) from %s",
                         len(buf),

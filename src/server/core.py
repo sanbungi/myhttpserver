@@ -5,7 +5,7 @@ import socket
 import ssl
 from functools import partial
 
-from .config_model import ServerConfig
+from .config_model import DEFAULT_MAX_BODY_SIZE, ServerConfig
 from .ip_table import InMemoryIPTable
 from .worker import WorkerConnectionLimiter, handle_client
 
@@ -44,11 +44,13 @@ class HTTPServer:
         config: ServerConfig = None,
         ip_table: InMemoryIPTable | None = None,
         max_connections_per_worker: int = 1024,
+        max_body_size: int = DEFAULT_MAX_BODY_SIZE,
     ):
         self.host = host
         self.port = port
         self.config = config
         self.ip_table = ip_table
+        self.max_body_size = max_body_size
         self.worker_limiter = WorkerConnectionLimiter(max_connections_per_worker)
 
     def _create_socket(self):
@@ -106,6 +108,7 @@ class HTTPServer:
                         config=self.config,
                         ip_table=self.ip_table,
                         worker_limiter=self.worker_limiter,
+                        max_body_size=self.max_body_size,
                     ),
                     sock=sock,
                     ssl=context,
